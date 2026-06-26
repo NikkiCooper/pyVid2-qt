@@ -1,0 +1,9 @@
+# .gitignore file
+__pycache__/
+.idea/
+.scratch
+.vscode
+.claude
+DEVELOPMENT.md
+*~
+

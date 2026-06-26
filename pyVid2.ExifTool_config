@@ -1,0 +1,39 @@
+#  pyVid2.ExifTool_config Copyright (c) 2026 Nikki Cooper
+#
+#  This program and the accompanying materials are made available under the
+#  terms of the GNU Lesser General Public License, version 3.0 which is available at
+#  https://www.gnu.org/licenses/gpl-3.0.html#license-text
+#
+# pyVid2.ExifTool_config
+#
+# Custom ExifTool tag definition for pyVid2-qt.
+# Defines 'AutoSpeed' in a dedicated XMP namespace (XMP-pyvid2).
+#
+# Tag:      XMP-pyvid2:AutoSpeed
+# Value:    playback speed as a decimal string (e.g. "1", "2", "4.5")
+# NS URI:   http://ns.pyvid2.net/1.0/
+#
+# Usage:
+#   exiftool -config pyVid2.ExifTool_config "-XMP-pyvid2:AutoSpeed=4.5" video.mp4
+#   exiftool -config pyVid2.ExifTool_config -j "-XMP-pyvid2:AutoSpeed" video.mp4
+
+# Step 1: Register the namespace in XMP::Main so ExifTool knows it exists.
+%Image::ExifTool::UserDefined = (
+    'Image::ExifTool::XMP::Main' => {
+        pyvid2 => {
+            SubDirectory => {
+                TagTable => 'Image::ExifTool::UserDefined::pyvid2',
+            },
+        },
+    },
+);
+
+# Step 2: Define the actual tag table for the namespace.
+%Image::ExifTool::UserDefined::pyvid2 = (
+    GROUPS    => { 0 => 'XMP', 1 => 'XMP-pyvid2', 2 => 'Other' },
+    NAMESPACE => { 'pyvid2' => 'http://ns.pyvid2.net/1.0/' },
+    WRITABLE  => 'string',
+    AutoSpeed => { },
+);
+
+1;  # must return true
