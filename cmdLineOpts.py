@@ -112,7 +112,7 @@ def cmdLineOptions():
     # Convenience flags (mirrors pyVid2 pattern — FindVideos.py relies on these)
     args.loadPlayListFlag = args.loadPlayList is not None
     args.loadFilesFlag    = args.Files        is not None
-    args.disableGIF       = False   # not exposed in pyVid-mpv
+    args.disableGIF       = False
 
     return args
 
