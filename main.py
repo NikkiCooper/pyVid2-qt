@@ -45,7 +45,7 @@ from ui.main_window import MainWindow
 def _qt_argv():
     """
     Return a copy of sys.argv with --display stripped out.
-    Qt intercepts --display as an X11 display connection string (e.g. ':0.0').
+    Qt intercepts --display as an X11 display connection string (e.g,':0.0').
     We use it as a monitor-index selector instead, so Qt must not see it.
     """
     result = []
@@ -90,12 +90,9 @@ def main():
 
     # Pass Qt a display-stripped argv so it doesn't try to open X display "1"
     app = QApplication(_qt_argv())
-
     window = MainWindow(opts=opts)
     window.show()
-
     sys.exit(app.exec())
-
 
 if __name__ == "__main__":
     main()
