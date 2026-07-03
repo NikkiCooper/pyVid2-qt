@@ -66,7 +66,6 @@ def _init_gst():
     except Exception:
         return None, False
 
-
 def _probe(Gst):
     """
     Return list of (elem_name, label, category, rank) for available HEVC decoders.
@@ -133,18 +132,12 @@ def setup_decoder(pref='auto'):
             return by_cat['vulkan'][1], available
         print(f"{bc.Yellow_f}--decoder vulkan: Vulkan decoder not available — falling back to auto{bc.RESET}")
         return setup_decoder('auto')
-        '''
-        elif pref == 'vaapi':
-            if 'vaapi' in by_cat:
-                os.environ['LIBVA_DRIVER_NAME'] = 'iHD'
-                _demote(Gst, by_cat, 'nvdec', 'vulkan')
-                return by_cat['vaapi'][1], available
-        '''
+
     elif pref == 'vaapi':
         if 'vaapi' in by_cat:
-            # Let the system select the driver natively, or safely fallback to nvidia
+            # Force the Intel driver architecture
             if not os.environ.get('LIBVA_DRIVER_NAME'):
-                os.environ['LIBVA_DRIVER_NAME'] = 'nvidia'
+                os.environ['LIBVA_DRIVER_NAME'] = 'iHD'
             _demote(Gst, by_cat, 'nvdec', 'vulkan')
             return by_cat['vaapi'][1], available
         print(f"{bc.Yellow_f}--decoder vaapi: VA-API not available — falling back to auto{bc.RESET}")
