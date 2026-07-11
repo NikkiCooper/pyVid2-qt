@@ -5,6 +5,22 @@ Designed for unattended or kiosk-style playback — shuffle, loop, variable spee
 
 ---
 
+## Table of Contents
+
+- [Requirements](#requirements)
+- [Installation](#installation)
+  - [BASIC](#basic)
+  - [ADVANCED](#advanced)
+- [Running](#running-after-basic-install)
+- [Command-Line Reference](#command-line-reference)
+- [Controlling Playback with `.ignore` Files](#controlling-playback-with-ignore-files)
+- [Keyboard Shortcuts](#keyboard-shortcuts)
+- [IR Remote Control](#ir-remote-control)
+- [Hardware Decoder Selection](#hardware-decoder-selection)
+- [License](#license)
+
+---
+
 ## Requirements
 
 ### System packages
@@ -22,7 +38,7 @@ sudo pacman -S python gst-plugins-good gst-plugins-bad gst-plugins-ugly \
 - **gstreamer-vaapi** — for VA-API hardware decoding (Intel / AMD)
 - **python-gobject** — GStreamer Python bindings
 - **exiftool** (`perl-image-exiftool`) — required only for speed-tag operations
--
+
 > X11 or XWayland is required. Native Wayland is not supported.
 
 ---
@@ -238,8 +254,114 @@ touch /mnt/Videos/Movies/Drama/.ignore
 
 To audit which directories are currently excluded before starting playback:
 ```bash
-pyVid --Paths /mnt/Videos --printIgnoreList --Paths /mnt/Videos
+pyVid --printIgnoreList --Paths /mnt/Videos
 ```
+
+---
+
+## Keyboard Shortcuts
+
+All shortcuts work while the player window is focused.
+
+### Playback Control
+
+| Key | Action |
+|---|---|
+| `Space` | Play / Pause |
+| `N` | Next video |
+| `P` | Previous video |
+| `R` | Restart current video from the beginning |
+| `L` | Toggle repeat (loop current video) |
+
+### Seeking
+
+| Key | Action |
+|---|---|
+| `→` (Right Arrow) | Seek forward 10 seconds |
+| `←` (Left Arrow) | Seek backward 10 seconds |
+| Mouse Wheel Up | Seek forward 10 seconds |
+| Mouse Wheel Down | Seek backward 10 seconds |
+
+### Speed
+
+| Key | Action |
+|---|---|
+| `+` or `=` | Increase playback speed (steps: 0.5 → 1.0 → 1.5 → … → 6.0) |
+| `-` | Decrease playback speed |
+
+### Audio
+
+| Key | Action |
+|---|---|
+| `↑` (Up Arrow) | Volume up (+5%) |
+| `↓` (Down Arrow) | Volume down (−5%) |
+| `M` | Mute / Unmute |
+
+### Display & OSD
+
+| Key | Action |
+|---|---|
+| `O` | Cycle position OSD: Off → position → position/duration → Off |
+| `T` | Toggle video title display |
+| `G` | Toggle greyscale |
+| `H` | Show help overlay (cycles: keyboard → IR remote → Off) |
+
+### Playlist
+
+| Key | Action |
+|---|---|
+| `J` | Toggle shuffle (randomize / sort playlist) |
+| `,` (Comma) | Print playlist to console |
+| `.` (Period) | Save current playlist to a file |
+| `Insert` | Show video metadata |
+
+### Misc
+
+| Key | Action |
+|---|---|
+| `S` | Take a screenshot |
+| `Escape` or `Q` | Quit (or dismiss help overlay if open) |
+
+---
+
+## IR Remote Control
+
+IR remote support is provided by a Raspberry Pi Pico W running `ir_wifi.py`, which decodes NEC IR signals
+and forwards them to pyVid2-qt over UDP. Full setup instructions are in
+**[IR_Pico_W/README.md](./IR_Pico_W/README.md)**.
+
+Remote button names map to player actions via `~/.local/share/pyVid2-qt/ir_keymap.conf`.
+
+### Default IR Key Actions
+
+| IR Button | Action |
+|---|---|
+| `PWR` | Quit program |
+| `PLAY_PAUSE` / `PLAY_PSE` | Play / Pause |
+| `PLAY_NEXT` | Next video |
+| `PLAY_PREV` | Previous video |
+| `FWD` | Seek forward 10 seconds (repeats while held) |
+| `REW` | Seek backward 10 seconds (repeats while held) |
+| `SPEED+` | Increase playback speed |
+| `SPEED-` | Decrease playback speed |
+| `VOL+` | Volume up (repeats while held) |
+| `VOL-` | Volume down (repeats while held) |
+| `MUTE-UNMUTE` | Mute / Unmute |
+| `LOOP` | Toggle repeat (loop current video) |
+| `RESTART` | Restart current video |
+| `SCREENSHOT` / `SCRNSHOT` | Take a screenshot |
+| `MENU` | Show help overlay |
+| `HUD` | Toggle HUD pin (keep HUD visible) |
+| `1` | Cycle position OSD: Off → position → position/duration → Off |
+| `3` | Save current playlist to a file |
+| `4` | Print playlist to console |
+| `5` | Randomize (shuffle) playlist |
+| `6` | Show video metadata |
+| `7` | Toggle video title display |
+
+> Button codes in `ir_keymap.conf` are hex values from your specific remote. Edit this file to match
+> the codes your remote actually sends. See [IR_Pico_W/README.md](IR_Pico_W/README.md) for full setup instructions,
+> including how to discover your remote's codes using the Pico W debug output.
 
 ---
 
