@@ -26,7 +26,7 @@ status_led.off()
 #led.on()
 
 # Set DEBUG = True for debug output
-DEBUG = None
+DEBUG = True
 lastIPAddr = '0.0.0.0'
 
 # ----------------------------------------------------------------------
@@ -56,8 +56,8 @@ TARGET_MATRIX = [
 ]
 # ----------------------------------------------------------------------
 
-SSID = "nicks"
-PASSWORD = "StevieNicks"
+SSID = "your_ssid"
+PASSWORD = "your_password"
 
 print(f"\n{BOLD}{White_f}IR-Picow{RESET} by{BOLD} {Cyan_f}Nikki Cooper{RESET}\n")
 print(f"{BOLD}{OKBLUE}--- PACKET GATEWAY ROUTER CORE INITIALIZING ---{RESET}")
