@@ -207,14 +207,14 @@ pyVid \
 ### Video Playback Options
 
 | Cmd Line Argument    | Default | Description                                                                               |
-|----------------------|---|-------------------------------------------------------------------------------------------|
-| `--loop`             | off | Loop playlist instead of exiting at the end                                               |
-| `--shuffle`          | off | Play videos in random order                                                               |
-| `--loopDelay` \<sec> | `1` | Delay in seconds between videos                                                           |
-| `--playSpeed` \<spd> | `2.0` | Playback speed multiplier 0.5 - 6.0 in 0.5 increments                                     |
-| `--decoder` \<dec>   | `auto` | Hardware decoder: `auto` `nvdec` `vulkan` `vaapi` `software`                              |
-| `--enableOSDcurpos`  | off | Show always-visible playlist position counter (upper-left). Toggle with `o` key or IR `1` |
-| `--autoSpeed`        | off | Honour `auto_speed` XMP tags embedded in video files — applies a per-video speed override |
+|----------------------|---------|-------------------------------------------------------------------------------------------|
+| `--loop`             | off     | Loop playlist instead of exiting at the end                                               |
+| `--shuffle`          | off     | Play videos in random order                                                               |
+| `--loopDelay` \<sec> | 1       | Delay in seconds between videos                                                           |
+| `--playSpeed` \<spd> | 2.0     | Playback speed multiplier 0.5 - 6.0 in 0.5 increments                                     |
+| `--decoder` \<dec>   | auto    | Hardware decoder: `auto` `nvdec` `vulkan` `vaapi` `software`                              |
+| `--enableOSDcurpos`  | off     | Show always-visible playlist position counter (upper-left). Toggle with `o` key or IR `1` |
+| `--autoSpeed`        | off     | Honour `auto_speed` XMP tags embedded in video files — applies a per-video speed override |
 
 ### Audio Options
 
