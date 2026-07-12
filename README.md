@@ -197,69 +197,69 @@ pyVid \
 
 ### Source (one or more required, may be combined)
 
-| CLI Argument | Description |
-|---|---|
-| `--Paths` \<dir> [dir ...] | Directories to scan recursively for video files |
-| `--Files` \<file> [file ...] | Explicit video files to load and play |
+| Command Line Argument               | Description |
+|-------------------------------------|---|
+| `--Paths` \<dir> [dir ...]          | Directories to scan recursively for video files |
+| `--Files` \<file> [file ...]        | Explicit video files to load and play |
 | `--loadPlayList` \<file> [file ...] | Load playlist files (one path per line) |
-| `--Glob` \<pattern> [pattern ...] | Glob or numeric-range patterns. Supports `*`, `?`, `[...]`, `{N-M}`, `{N-}` |
+| `--Glob` \<pattern> [pattern ...]   | Glob or numeric-range patterns. Supports `*`, `?`, `[...]`, `{N-M}`, `{N-}` |
 
 ### Video Playback Options
 
-| CLI Argument | Default | Description |
-|---|---|---|
-| `--loop` | off | Loop playlist instead of exiting at the end |
-| `--shuffle` | off | Play videos in random order |
-| `--loopDelay` \<seconds> | `1` | Delay in seconds between videos |
+| Command Line Argument         | Default | Description |
+|---------------------------|---|---|
+| `--loop`                  | off | Loop playlist instead of exiting at the end |
+| `--shuffle`               | off | Play videos in random order |
+| `--loopDelay` \<seconds>  | `1` | Delay in seconds between videos |
 | `--playSpeed` \<0.5–10.0> | `2.0` | Playback speed multiplier |
-| `--decoder` \<choice> | `auto` | Hardware decoder: `auto` `nvdec` `vulkan` `vaapi` `software` |
-| `--enableOSDcurpos` | off | Show always-visible playlist position counter (upper-left). Toggle with `o` key or IR `1` |
-| `--autoSpeed` | off | Honour `auto_speed` XMP tags embedded in video files — applies a per-video speed override |
+| `--decoder` \<choice>     | `auto` | Hardware decoder: `auto` `nvdec` `vulkan` `vaapi` `software` |
+| `--enableOSDcurpos`       | off | Show always-visible playlist position counter (upper-left). Toggle with `o` key or IR `1` |
+| `--autoSpeed`             | off | Honour `auto_speed` XMP tags embedded in video files — applies a per-video speed override |
 
 ### Audio Options
 
-| CLI Argument | Default | Description |
-|---|---|---|
-| `--mute` | off | Start with audio muted |
-| `--volume` \<0–100> | `0` | Initial volume percentage |
+| Command Line Argument | Default | Description |
+|-----------------------|---|---|
+| `--mute`              | off | Start with audio muted |
+| `--volume` \<0–100>   | `0` | Initial volume percentage |
 
 ### Screenshot Options
 
-| CLI Argument | Default | Description |
-|---|---|---|
-| `--sshotDir` \<path> | `~/pyVid2-qt-Shots` | Directory where screenshots are saved |
-| `--useJPG` | off | Save screenshots as JPEG instead of PNG |
+| Command Line Argument | Default | Description |
+|-----------------------|---|---|
+| `--sshotDir` \<path>  | `~/pyVid2-qt-Shots` | Directory where screenshots are saved |
+| `--useJPG`            | off | Save screenshots as JPEG instead of PNG |
 
 ### File Options
 
-| CLI Argument | Description |
-|---|---|
-| `--noIgnore` | Ignore `.ignore` files (all files in a directory are included) |
-| `--noRecurse` | Do not recurse into subdirectories (applies to `--Paths` and `--Glob`) |
-| `--printIgnoreList` | Print all `.ignore` files found under `--Paths` directories |
+| Command Line Argument | Description |
+|-----------------------|---|
+| `--noIgnore`          | Ignore `.ignore` files (all files in a directory are included) |
+| `--noRecurse`         | Do not recurse into subdirectories (applies to `--Paths` and `--Glob`) |
+| `--printIgnoreList`   | Print all `.ignore` files found under `--Paths` directories |
 
 ### System Options
 
-| CLI Argument | Default | Description |
-|---|---|---|
-| `--display` \<N> | active display | Target a specific monitor by index |
-| `--verbose` | off | Enable verbose console output |
-| `--metadata` | off | Print video metadata to the console |
-| `--udp-port` \<port> | `5005` | UDP port for IR remote control commands |
+| Command Line Argument | Default | Description |
+|-----------------------|---|---|
+| `--display` \<N>      | active display | Target a specific monitor by index |
+| `--verbose`           | off | Enable verbose console output |
+| `--metadata`          | off | Print video metadata to the console |
+| `--udp-port` \<port>  | `5005` | UDP port for IR remote control commands |
 | `--ir-keymap` \<path> | `~/.local/share/`<br>`pyVid2-qt/ir_keymap.conf` | Path to a custom IR remote keymap file |
-| `--disable-IR` | off | Disable the IR remote control UDP listener |
+| `--disable-IR`        | off | Disable the IR remote control UDP listener |
 
 ### Speed Tag Tools
 
 These operate on video file metadata (XMP tags) and exit immediately after running. Requires `exiftool`.
 `--addAutoSpeed` and `--delAutoSpeed` cannot be combined with `--loadPlayList`.
 
-| CLI Argument | Description |
-|---|---|
-| `--addAutoSpeed` \<speed> | Write an `auto_speed` XMP tag to matched files. Speed must be one of: `0.5 1 1.5 2 2.5 3 3.5 4 4.5 5 5.5 6` |
-| `--delAutoSpeed` | Remove the `auto_speed` XMP tag from matched files. Prompts for confirmation. |
+| Command Line Argument       | Description |
+|-----------------------------|---|
+| `--addAutoSpeed` \<speed>   | Write an `auto_speed` XMP tag to matched files. Speed must be one of: `0.5 1 1.5 2 2.5 3 3.5 4 4.5 5 5.5 6` |
+| `--delAutoSpeed`            | Remove the `auto_speed` XMP tag from matched files. Prompts for confirmation. |
 | `--searchAutoSpeed` [speed] | Search for `auto_speed` tags and print a report. Omit speed to list all tagged files. |
-| `--dryRun` | Preview what `--addAutoSpeed` or `--delAutoSpeed` would do without modifying any files |
+| `--dryRun`                  | Preview what `--addAutoSpeed` or `--delAutoSpeed` would do without modifying any files |
 
 ---
 
