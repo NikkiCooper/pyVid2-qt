@@ -5,6 +5,13 @@ Designed for unattended or kiosk-style playback — shuffle, loop, variable spee
 
 ---
 
+> **Personal project notice:** pyVid2-qt was written for my specific workflow and
+> is not presented as a general-purpose application suitable for anyone else's use. If you find
+> anything in this codebase useful for your own purposes, you are welcome to it — that is
+> contribution enough to the free software ecosystem.
+
+---
+
 ## Table of Contents
 
 - [Requirements](#requirements)
@@ -23,7 +30,17 @@ Designed for unattended or kiosk-style playback — shuffle, loop, variable spee
 
 ## Requirements
 
-### System packages
+> **Platform note:** pyVid2-qt should run on most modern Linux distributions but has only been
+> tested on Arch Linux. Package names will vary by distribution; `pacman` package names below
+> serve as a reference point for finding equivalents on your system.
+
+> **Installer note:** The BASIC installer (`install.sh`) does **not** install or configure
+> hardware acceleration, CUDA, or OpenCV. These must already be installed and working system-wide
+> before running the installer if hardware-accelerated decoding is desired.
+
+> X11 or XWayland is required. Native Wayland is not supported.
+
+### Base system packages
 
 Install these before running the installer:
 
@@ -33,13 +50,72 @@ sudo pacman -S python gst-plugins-good gst-plugins-bad gst-plugins-ugly \
                gst-libav gstreamer-vaapi python-gobject perl-image-exiftool
 ```
 
- **Python 3.10+**
+- **Python 3.10+**
 - **GStreamer 1.0** with `gst-plugins-good`, `gst-plugins-bad`, `gst-plugins-ugly`, `gst-libav`
-- **gstreamer-vaapi** — for VA-API hardware decoding (Intel / AMD)
+- **gstreamer-vaapi** — VA-API hardware decoding (Intel / AMD); see below
 - **python-gobject** — GStreamer Python bindings
 - **exiftool** (`perl-image-exiftool`) — required only for speed-tag operations
 
-> X11 or XWayland is required. Native Wayland is not supported.
+### VA-API hardware decoding (Intel / AMD)
+
+`gstreamer-vaapi` (listed above) provides the GStreamer side. You also need a vendor-supplied
+VA-API driver:
+
+```bash
+# Intel — Broadwell (5th gen) and later
+sudo pacman -S intel-media-driver libva
+
+# Intel — Haswell (4th gen) and earlier
+sudo pacman -S libva-intel-driver libva
+
+# AMD — Mesa driver (covers the vast majority of AMD GPUs)
+sudo pacman -S libva-mesa-driver libva
+```
+
+### NVDEC hardware decoding (NVIDIA / CUDA)
+
+The `nvdec` GStreamer plugin is included in `gst-plugins-bad` but will only activate when CUDA
+is present at runtime. A working NVIDIA driver and the CUDA toolkit must both be installed
+system-wide:
+
+```bash
+# NVIDIA driver — choose one
+sudo pacman -S nvidia           # proprietary (most GPUs)
+sudo pacman -S nvidia-open      # open kernel module (Turing / RTX and later)
+
+# CUDA toolkit
+sudo pacman -S cuda             # in the extra repository
+```
+
+**OpenCV with CUDA support** is an additional requirement for certain processing features. The
+standard `python-opencv` package does **not** include CUDA support. On Arch Linux the
+CUDA-enabled build is in the Extra repository:
+
+```bash
+sudo pacman -S python-opencv-cuda
+```
+
+pacman will automatically pull in all required dependencies:
+`fmt`, `glew`, `hdf5`, `jsoncpp`, `opencv-cuda`, `openmpi`, `pugixml`, `python-numpy`,
+`qt6-base`, `vtk`
+
+> Advanced users: you know what you need to do.
+
+### Vulkan hardware decoding
+
+The Vulkan video decoder is part of `gst-plugins-bad` and activates automatically when a
+Vulkan-capable driver is present:
+
+```bash
+# AMD (Mesa Vulkan driver)
+sudo pacman -S vulkan-radeon vulkan-icd-loader
+
+# Intel
+sudo pacman -S vulkan-intel vulkan-icd-loader
+
+# NVIDIA — Vulkan support is bundled with nvidia-utils, which is pulled in by the
+# driver packages above; no additional packages are required.
+```
 
 ---
 
@@ -125,7 +201,7 @@ pyVid \
 |---|---|
 | `--Paths <dir> [dir ...]` | Directories to scan recursively for video files |
 | `--Files <file> [file ...]` | Explicit video files to load and play |
-| `--loadPlayList <file> [file ...]` | Load playlist files (one path per line) |
+| <nobr>`--loadPlayList <file> [file ...]`</nobr> | Load playlist files (one path per line) |
 | `--Glob <pattern> [pattern ...]` | Glob or numeric-range patterns. Supports `*`, `?`, `[...]`, `{N-M}`, `{N-}` |
 
 ### Video Playback Options
@@ -134,8 +210,8 @@ pyVid \
 |---|---|---|
 | `--loop` | off | Loop playlist instead of exiting at the end |
 | `--shuffle` | off | Play videos in random order |
-| `--loopDelay <seconds>` | `1` | Delay in seconds between videos |
-| `--playSpeed <0.5–10.0>` | `2.0` | Playback speed multiplier |
+| <nobr>`--loopDelay <seconds>`</nobr> | `1` | Delay in seconds between videos |
+| <nobr>`--playSpeed <0.5–10.0>`</nobr> | `2.0` | Playback speed multiplier |
 | `--decoder <choice>` | `auto` | Hardware decoder: `auto` `nvdec` `vulkan` `vaapi` `software` |
 | `--enableOSDcurpos` | off | Show always-visible playlist position counter (upper-left). Toggle with `o` key or IR `1` |
 | `--autoSpeed` | off | Honour `auto_speed` XMP tags embedded in video files — applies a per-video speed override |
@@ -170,7 +246,7 @@ pyVid \
 | `--verbose` | off | Enable verbose console output |
 | `--metadata` | off | Print video metadata to the console |
 | `--udp-port <port>` | `5005` | UDP port for IR remote control commands |
-| `--ir-keymap <path>` | `~/.local/share/pyVid2-qt/ir_keymap.conf` | Path to a custom IR remote keymap file |
+| <nobr>`--ir-keymap <path>`</nobr> | <nobr>`~/.local/share/pyVid2-qt/ir_keymap.conf`</nobr> | Path to a custom IR remote keymap file |
 | `--disable-IR` | off | Disable the IR remote control UDP listener |
 
 ### Speed Tag Tools
@@ -180,9 +256,9 @@ These operate on video file metadata (XMP tags) and exit immediately after runni
 
 | Argument | Description |
 |---|---|
-| `--addAutoSpeed <speed>` | Write an `auto_speed` XMP tag to matched files. Speed must be one of: `0.5 1 1.5 2 2.5 3 3.5 4 4.5 5 5.5 6` |
+| <nobr>`--addAutoSpeed <speed>`</nobr> | Write an `auto_speed` XMP tag to matched files. Speed must be one of: `0.5 1 1.5 2 2.5 3 3.5 4 4.5 5 5.5 6` |
 | `--delAutoSpeed` | Remove the `auto_speed` XMP tag from matched files. Prompts for confirmation. |
-| `--searchAutoSpeed [speed]` | Search for `auto_speed` tags and print a report. Omit speed to list all tagged files. |
+| <nobr>`--searchAutoSpeed [speed]`</nobr> | Search for `auto_speed` tags and print a report. Omit speed to list all tagged files. |
 | `--dryRun` | Preview what `--addAutoSpeed` or `--delAutoSpeed` would do without modifying any files |
 
 ---
