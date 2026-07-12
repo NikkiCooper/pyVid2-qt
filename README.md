@@ -197,7 +197,7 @@ pyVid \
 
 ### Source (one or more required, may be combined)
 
-| Command Line Argument               | Description |
+| Cmd Line Argument               | Description |
 |-------------------------------------|---|
 | `--Paths` \<dir> [dir ...]          | Directories to scan recursively for video files |
 | `--Files` \<file> [file ...]        | Explicit video files to load and play |
@@ -206,33 +206,33 @@ pyVid \
 
 ### Video Playback Options
 
-| Command Line Argument         | Default | Description |
-|---------------------------|---|---|
-| `--loop`                  | off | Loop playlist instead of exiting at the end |
-| `--shuffle`               | off | Play videos in random order |
-| `--loopDelay` \<seconds>  | `1` | Delay in seconds between videos |
-| `--playSpeed` \<0.5–10.0> | `2.0` | Playback speed multiplier |
-| `--decoder` \<choice>     | `auto` | Hardware decoder: `auto` `nvdec` `vulkan` `vaapi` `software` |
-| `--enableOSDcurpos`       | off | Show always-visible playlist position counter (upper-left). Toggle with `o` key or IR `1` |
-| `--autoSpeed`             | off | Honour `auto_speed` XMP tags embedded in video files — applies a per-video speed override |
+| Cmd Line Argument      | Default | Description |
+|------------------------|---|---|
+| `--loop`               | off | Loop playlist instead of exiting at the end |
+| `--shuffle`            | off | Play videos in random order |
+| `--loopDelay` \<sec>   | `1` | Delay in seconds between videos |
+| `--playSpeed` \<.5–10> | `2.0` | Playback speed multiplier |
+| `--decoder` \<choice>  | `auto` | Hardware decoder: `auto` `nvdec` `vulkan` `vaapi` `software` |
+| `--enableOSDcurpos`    | off | Show always-visible playlist position counter (upper-left). Toggle with `o` key or IR `1` |
+| `--autoSpeed`          | off | Honour `auto_speed` XMP tags embedded in video files — applies a per-video speed override |
 
 ### Audio Options
 
-| Command Line Argument | Default | Description |
-|-----------------------|---|---|
-| `--mute`              | off | Start with audio muted |
-| `--volume` \<0–100>   | `0` | Initial volume percentage |
+| Cmd Line Argument   | Default | Description |
+|---------------------|---|---|
+| `--mute`            | off | Start with audio muted |
+| `--volume` \<0–100> | `0` | Initial volume percentage |
 
 ### Screenshot Options
 
-| Command Line Argument | Default | Description |
+| Cmd Line Argument | Default | Description |
 |-----------------------|---|---|
 | `--sshotDir` \<path>  | `~/pyVid2-qt-Shots` | Directory where screenshots are saved |
 | `--useJPG`            | off | Save screenshots as JPEG instead of PNG |
 
 ### File Options
 
-| Command Line Argument | Description |
+| Cmd Line Argument | Description |
 |-----------------------|---|
 | `--noIgnore`          | Ignore `.ignore` files (all files in a directory are included) |
 | `--noRecurse`         | Do not recurse into subdirectories (applies to `--Paths` and `--Glob`) |
@@ -240,7 +240,7 @@ pyVid \
 
 ### System Options
 
-| Command Line Argument | Default | Description |
+| Cmd Line Argument | Default | Description |
 |-----------------------|---|---|
 | `--display` \<N>      | active display | Target a specific monitor by index |
 | `--verbose`           | off | Enable verbose console output |
@@ -254,7 +254,7 @@ pyVid \
 These operate on video file metadata (XMP tags) and exit immediately after running. Requires `exiftool`.
 `--addAutoSpeed` and `--delAutoSpeed` cannot be combined with `--loadPlayList`.
 
-| Command Line Argument       | Description |
+| Cmd Line Argument           | Description |
 |-----------------------------|---|
 | `--addAutoSpeed` \<speed>   | Write an `auto_speed` XMP tag to matched files. Speed must be one of: `0.5 1 1.5 2 2.5 3 3.5 4 4.5 5 5.5 6` |
 | `--delAutoSpeed`            | Remove the `auto_speed` XMP tag from matched files. Prompts for confirmation. |
