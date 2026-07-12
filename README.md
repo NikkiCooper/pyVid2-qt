@@ -206,15 +206,15 @@ pyVid \
 
 ### Video Playback Options
 
-| Cmd Line Argument      | Default | Description                                                                               |
-|------------------------|---|-------------------------------------------------------------------------------------------|
-| `--loop`               | off | Loop playlist instead of exiting at the end                                               |
-| `--shuffle`            | off | Play videos in random order                                                               |
-| `--loopDelay` \<sec>   | `1` | Delay in seconds between videos                                                           |
-| `--playSpeed` \<spd>   | `2.0` | Playback speed multiplier 0.5 - 10.0                                                      |
-| `--decoder` \<choice>  | `auto` | Hardware decoder: `auto` `nvdec` `vulkan` `vaapi` `software`                              |
-| `--enableOSDcurpos`    | off | Show always-visible playlist position counter (upper-left). Toggle with `o` key or IR `1` |
-| `--autoSpeed`          | off | Honour `auto_speed` XMP tags embedded in video files — applies a per-video speed override |
+| Cmd Line Argument    | Default | Description                                                                               |
+|----------------------|---|-------------------------------------------------------------------------------------------|
+| `--loop`             | off | Loop playlist instead of exiting at the end                                               |
+| `--shuffle`          | off | Play videos in random order                                                               |
+| `--loopDelay` \<sec> | `1` | Delay in seconds between videos                                                           |
+| `--playSpeed` \<spd> | `2.0` | Playback speed multiplier 0.5 - 10.0                                                      |
+| `--decoder` \<dec>   | `auto` | Hardware decoder: `auto` `nvdec` `vulkan` `vaapi` `software`                              |
+| `--enableOSDcurpos`  | off | Show always-visible playlist position counter (upper-left). Toggle with `o` key or IR `1` |
+| `--autoSpeed`        | off | Honour `auto_speed` XMP tags embedded in video files — applies a per-video speed override |
 
 ### Audio Options
 
@@ -254,12 +254,12 @@ pyVid \
 These operate on video file metadata (XMP tags) and exit immediately after running. Requires `exiftool`.
 `--addAutoSpeed` and `--delAutoSpeed` cannot be combined with `--loadPlayList`.
 
-| Cmd Line Argument           | Description |
-|-----------------------------|---|
-| `--addAutoSpeed` \<speed>   | Write an `auto_speed` XMP tag to matched files. Speed must be one of: `0.5 1 1.5 2 2.5 3 3.5 4 4.5 5 5.5 6` |
-| `--delAutoSpeed`            | Remove the `auto_speed` XMP tag from matched files. Prompts for confirmation. |
-| `--searchAutoSpeed` [speed] | Search for `auto_speed` tags and print a report. Omit speed to list all tagged files. |
-| `--dryRun`                  | Preview what `--addAutoSpeed` or `--delAutoSpeed` would do without modifying any files |
+| Cmd Line Argument         | Description |
+|---------------------------|---|
+| `--addAutoSpeed` \<spd>   | Write an `auto_speed` XMP tag to matched files. Speed must be one of: `0.5 1 1.5 2 2.5 3 3.5 4 4.5 5 5.5 6` |
+| `--delAutoSpeed`          | Remove the `auto_speed` XMP tag from matched files. Prompts for confirmation. |
+| `--searchAutoSpeed` [spd] | Search for `auto_speed` tags and print a report. Omit speed to list all tagged files. |
+| `--dryRun`                | Preview what `--addAutoSpeed` or `--delAutoSpeed` would do without modifying any files |
 
 ---
 
