@@ -1,4 +1,4 @@
-#  hud.py Copyright (c) 2026 Nikki Cooper
+#  ui/hud.py Copyright (c) 2026 Nikki Cooper
 #
 #  This program and the accompanying materials are made available under the
 #  terms of the GNU Lesser General Public License, version 3.0 which is available at
@@ -13,7 +13,7 @@ Icon layout mirrors pyVid2's VideoPlayBar. Icons loaded from
 import os
 
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel,
-                                QSlider, QToolTip, QApplication, QStackedWidget)
+                                QSlider, QToolTip, QApplication, QSizePolicy)
 from PySide6.QtCore import Qt, QTimer, QPoint, QSize, QObject, QEvent
 from PySide6.QtGui import (QPainter, QColor, QLinearGradient, QBrush,
                             QPixmap, QIcon, QFontDatabase, QPen,
@@ -30,22 +30,31 @@ DODGERBLUE4 = QColor(16,  78, 139)    # tooltip background
 HIDE_DELAY_MS    = 1125
 HUD_HEIGHT_RATIO = 0.065    # 6.5 % of screen height  (~140 px 4K, ~70 px 1080p)
 
+# HUD sizing caps.
+# 1080p keeps the current pleasant ~70 px HUD.
+# 4K no longer grows to ~140 px; it stays compact.
+HUD_HEIGHT_MIN = 64
+HUD_HEIGHT_MAX = 78
+HUD_ICON_MIN   = 32
+HUD_ICON_MAX   = 44
+HUD_FONT_MIN   = 15
+HUD_FONT_MAX   = 19
+
 # ── Font families ─────────────────────────────────────────────────────────
 FF_CONDENSED  = "'Roboto Condensed','RobotoCondensed','Roboto',sans-serif"
-FF_BOLD       = "'Roboto Bold','Roboto',sans-serif"
 FF_MONTSERRAT = "'Montserrat',sans-serif"
 
-# ── pyVid2 colour palette (from displayVideoInfo) ─────────────────────────
-C_STATUS_PLAY   = "rgb(255,255,255)"   # white   — Playing
-C_STATUS_PAUSE  = "rgb(255,255,0)"     # yellow  — Paused
-C_FILENUM       = "rgb(255,0,255)"     # magenta — "N of Total:"
-C_FILENAME_NORM = "rgb(255,170,0)"     # orange-amber — not looping
-C_FILENAME_LOOP = "rgb(0,255,255)"     # aqua    — looping
-C_ORG_DUR       = "rgb(255,0,255)"     # magenta — original duration
-C_ARROW         = "rgb(0,255,255)"     # cyan    — "→" separator
-C_EFF_DUR       = "rgb(255,130,71)"    # sienna1 — effective duration
-C_SPEED_1X      = "rgb(255,255,0)"     # yellow  — [1X]
-C_SPEED_NX      = "rgb(255,0,0)"       # red     — [NX] when N ≠ 1
+# ── HUD text palette (toned down from pyVid2's displayVideoInfo) ──────────
+# Reference info is dim; the numbers you actually watch are bright.
+C_PAUSED        = "rgb(255,255,0)"     # yellow  — PAUSED tag (hidden while playing)
+C_FILENUM       = "rgb(200,205,215)"   # light grey — "Video N of Total" / "Sub-Video N of Total"
+C_SEPARATOR     = "rgb(140,160,200)"   # dim blue-grey — "·" and "→"
+C_FILENAME_NORM = "rgb(255,170,0)"     # orange-amber — not repeating
+C_FILENAME_LOOP = "rgb(0,255,255)"     # aqua    — repeating
+C_ORG_DUR       = "rgb(150,155,165)"   # dim grey — duration at 1×
+C_EFF_DUR       = "rgb(255,255,255)"   # white   — duration at current speed
+C_SPEED_1X      = "rgb(255,255,0)"     # yellow  — 1×
+C_SPEED_NX      = "rgb(255,110,60)"    # orange-red — N× when N ≠ 1
 C_POSITION      = "rgb(0,210,0)"       # green   — wall-clock position
 
 _fonts_registered = False
@@ -101,9 +110,9 @@ def _apply_tooltip_style(screen_h):
     if app:
         app.setStyleSheet(app.styleSheet() + f"""
             QToolTip {{
-                background-color: rgb(16, 78, 139);        
+                background-color: rgb(16, 78, 139);
                 color: white;
-                border: 2px solid rgb(30, 144, 255);        
+                border: 2px solid rgb(30, 144, 255);
                 border-radius: 8px;
                 font-family: {FF_MONTSERRAT};
                 font-weight: bold;
@@ -140,23 +149,54 @@ def _format_time(ms):
 
 def _duration_html(duration_ms, speed):
     """
-    Rich-text HTML for the duration+speed field, matching pyVid2 colours.
-      1X:  '10:00 [1X]'             magenta + yellow
-      NX:  '10:00→05:00 [2X]'       magenta + cyan arrow + sienna1 + red
+    Rich-text HTML for the duration+speed field at the left of the seek slider.
+      1×:  '12:19  1×'              white duration + yellow speed
+      N×:  '12:19 → 06:09  2×'      dim 1× duration, dim arrow, white effective, orange-red speed
     """
     if duration_ms <= 0:
         return ""
     dur = _format_time(duration_ms)
     spd = int(speed) if float(speed).is_integer() else speed
-    speed_color = C_SPEED_1X if abs(speed - 1.0) < 0.01 else C_SPEED_NX
-    speed_html  = f' <span style="color:{speed_color}">[{spd}X]</span>'
-    if abs(speed - 1.0) < 0.01:
-        return f'<span style="color:{C_ORG_DUR}">{dur}</span>{speed_html}'
+    is_1x = abs(speed - 1.0) < 0.01
+    speed_color = C_SPEED_1X if is_1x else C_SPEED_NX
+    speed_html  = f'&nbsp;&nbsp;<span style="color:{speed_color}; font-weight:bold">{spd}×</span>'
+    if is_1x:
+        return f'<span style="color:{C_EFF_DUR}">{dur}</span>{speed_html}'
     eff = _format_time(int(duration_ms / speed))
     return (f'<span style="color:{C_ORG_DUR}">{dur}</span>'
-            f'<span style="color:{C_ARROW}">→</span>'
+            f'<span style="color:{C_SEPARATOR}">&nbsp;→&nbsp;</span>'
             f'<span style="color:{C_EFF_DUR}">{eff}</span>'
             f'{speed_html}')
+
+
+class _ElidedLabel(QLabel):
+    """Plain-text QLabel that shortens its text with '…' instead of widening the layout."""
+
+    def __init__(self, text=""):
+        super().__init__()
+        self._full_text = text
+        self.setMinimumWidth(1)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        super().setText(text)
+
+    def setText(self, text):
+        self._full_text = text
+        self._refit()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._refit()
+
+    def changeEvent(self, event):
+        # Stylesheet font changes (e.g. bold when repeating) alter text width
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
+            self._refit()
+
+    def _refit(self):
+        elided = self.fontMetrics().elidedText(
+            self._full_text, Qt.TextElideMode.ElideRight, self.width())
+        super().setText(elided)
 
 
 # ── Help overlay ──────────────────────────────────────────────────────────
@@ -179,6 +219,7 @@ _HELP_KEYS = [
     ("H",          "This Help Window"),
     ("O",          "Toggle OSD"),
     ("J",          "shuffle playlist"),
+    ("F",          "Filter: play current model only On / Off"),
     ("G",          "Greyscale On / Off"),
     ("T",          "Toggle Video Title"),
     ("(,)",        "Print master playlist to console"),
@@ -200,6 +241,8 @@ class HelpOverlay(QWidget):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        # Notification type: KWin never flags these "demands attention" (which pins auto-hide panels)
+        self.setAttribute(Qt.WidgetAttribute.WA_X11NetWmWindowTypeNotification)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         screen_h = main_window.screen().geometry().height()
@@ -272,6 +315,8 @@ class RemoteOverlay(QWidget):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        # Notification type: KWin never flags these "demands attention" (which pins auto-hide panels)
+        self.setAttribute(Qt.WidgetAttribute.WA_X11NetWmWindowTypeNotification)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         layout = QVBoxLayout(self)
@@ -327,6 +372,8 @@ class CurPosOsd(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        # Notification type: KWin never flags these "demands attention" (which pins auto-hide panels)
+        self.setAttribute(Qt.WidgetAttribute.WA_X11NetWmWindowTypeNotification)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         screen_h = main_window.screen().geometry().height()
@@ -433,6 +480,8 @@ class HUD(QWidget):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        # Notification type: KWin never flags these "demands attention" (which pins auto-hide panels)
+        self.setAttribute(Qt.WidgetAttribute.WA_X11NetWmWindowTypeNotification)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         global _fonts_registered
@@ -443,12 +492,8 @@ class HUD(QWidget):
         screen = self.mw.screen().geometry()
         _apply_tooltip_style(screen.height())
 
-        # Scale to screen
-        self._hud_height = max(70,  int(screen.height() * HUD_HEIGHT_RATIO))
-        self._icon_sz    = max(32,  int(self._hud_height * 0.65))
-        self._fs         = max(16,  int(screen.height() * 0.016))    # base font px
-        self._fs_pos     = max(18,  int(self._fs * 1.15))             # position label slightly larger
-        self._vol_w      = max(80,  int(screen.width()  * 0.06))
+        self._screen_name = None
+        self._configure_for_screen(screen)
 
         # Internal state
         self._filter_visible = False
@@ -464,10 +509,37 @@ class HUD(QWidget):
         self.hide_timer.setSingleShot(True)
         self.hide_timer.timeout.connect(self._opacity_hide)
         self.pinned = False   # set True by IR HUD button: disables auto-hide and mouse-driven hide
+        self.sub_mode = False # set True by MainWindow while a model sub-playlist is active
 
         self._load_icons()
         self._build_ui()
         # NOT shown here — _init_overlays() in MainWindow handles initial mapping
+
+    def _configure_for_screen(self, screen_rect):
+        """
+        Size the HUD from the current monitor, but cap growth so 4K does not
+        produce an oversized bar/icons/fonts.
+
+        Qt screen geometry is in device-independent pixels, which is what QWidget
+        positioning expects.  The important part is that the final placement also
+        uses the same screen geometry directly instead of mw.mapToGlobal().
+        """
+        screen_h = screen_rect.height()
+        screen_w = screen_rect.width()
+
+        self._hud_height = max(
+            HUD_HEIGHT_MIN,
+            min(HUD_HEIGHT_MAX, int(screen_h * HUD_HEIGHT_RATIO))
+        )
+        self._icon_sz = max(
+            HUD_ICON_MIN,
+            min(HUD_ICON_MAX, int(self._hud_height * 0.58))
+        )
+        self._fs = max(
+            HUD_FONT_MIN,
+            min(HUD_FONT_MAX, int(screen_h * 0.016))
+        )
+        self._vol_w = max(80, min(140, int(screen_w * 0.06)))
 
     # ──────────────────────────────────────────────
     # Icon loading
@@ -492,9 +564,9 @@ class HUD(QWidget):
         self._icon_mute         = _load_icon("mute.png",                 sz)
         self._icon_info         = _load_icon("faq.png",                  sz)
 
-    # ──────────────────────────────────────────────
+    # ─────────────────────────────────────────────
     # UI construction helpers
-    # ──────────────────────────────────────────────
+    # ─────────────────────────────────────────────
 
     def _icon_btn(self, pixmap, tooltip=""):
         """Flat icon-only QPushButton with a subtle DodgerBlue hover."""
@@ -514,7 +586,7 @@ class HUD(QWidget):
                 border: none;
             }}
             QPushButton:hover {{
-                background: rgba(30, 144, 255, 60); 
+                background: rgba(30, 144, 255, 60);
                 border-radius: {pad + 2}px;
             }}
         """)
@@ -555,7 +627,7 @@ class HUD(QWidget):
         self.btn_repeat     = self._icon_btn(self._icon_repeat,      "Repeat Video")
         self.btn_restart    = self._icon_btn(self._icon_restart,     "Restart Video")
         self.btn_screenshot = self._icon_btn(self._icon_screenshot,  "Screenshot")
-        self.btn_filter     = self._icon_btn(self._icon_filter_on,   "Filter Panel")
+        self.btn_filter     = self._icon_btn(self._icon_filter_on,   "Filter by Model")
         self.btn_help       = self._icon_btn(self._icon_info,        "Help")
 
         self.btn_play_pause.clicked.connect(self.mw.toggle_play_pause)
@@ -577,34 +649,47 @@ class HUD(QWidget):
 
         layout.addSpacing(10)
 
-        # ── Centre stack: info page  ↔  seek-slider page ─────────────────
-        # Hovering over the info area swaps to a seek slider; leaving reverts.
-        self._centre_stack = QStackedWidget()
-        self._centre_stack.setSizePolicy(
-            self._centre_stack.sizePolicy().horizontalPolicy(),
-            self._centre_stack.sizePolicy().verticalPolicy()
-        )
+        # ── Centre: two rows, both always visible ─────────────────────────
+        #   Row 1:  [PAUSED]  Sub-Video 52 of 94 · Eugenia-Slideshow-103_Kenburns
+        #   Row 2:  12:19 → 06:09  2×   ━━━━━━●────────────   03:42
+        centre = QWidget()
+        centre_layout = QVBoxLayout(centre)
+        centre_layout.setContentsMargins(0, 0, 0, 0)
+        centre_layout.setSpacing(0)
 
-        # ── Page 0: info labels ───────────────────────────────────────────
-        info_page = QWidget()
-        info_layout = QHBoxLayout(info_page)
-        info_layout.setContentsMargins(0, 0, 0, 0)
-        info_layout.setSpacing(2)
+        # ── Row 1: status line ────────────────────────────────────────────
+        info_row = QHBoxLayout()
+        info_row.setContentsMargins(0, 0, 0, 0)
+        info_row.setSpacing(0)
 
-        # "Playing" white / "Paused" yellow — fixed width prevents layout jump
-        self.lbl_status = self._text_lbl("", color=C_STATUS_PLAY)
-        self.lbl_status.setFixedWidth(max(80, self._fs * 5))
-        info_layout.addWidget(self.lbl_status)
+        # "PAUSED" — yellow bold, only shown while paused (play/pause icon covers "Playing")
+        self.lbl_paused = self._text_lbl("PAUSED", color=C_PAUSED, bold=True)
+        self.lbl_paused.setContentsMargins(0, 0, max(8, self._fs // 2), 0)
+        self.lbl_paused.hide()
+        info_row.addWidget(self.lbl_paused)
 
-        # "N of Total:  " — magenta, no stretch
+        # "Video N of Total" / "Sub-Video N of Total" — light grey
         self.lbl_filenum = self._text_lbl("", color=C_FILENUM)
-        info_layout.addWidget(self.lbl_filenum)
+        info_row.addWidget(self.lbl_filenum)
 
-        # "VideoName" — orange-amber (or aqua when looping), no stretch
-        self.lbl_filename = self._text_lbl("No playlist loaded", color=C_FILENAME_NORM)
-        info_layout.addWidget(self.lbl_filename)
+        # "·" separator — hidden when there is no counter
+        self.lbl_sep = self._text_lbl("·", color=C_SEPARATOR, bold=True)
+        self.lbl_sep.setContentsMargins(max(6, self._fs // 3), 0, max(6, self._fs // 3), 0)
+        self.lbl_sep.hide()
+        info_row.addWidget(self.lbl_sep)
 
-        # Duration + speed rich-text: sits directly after filename
+        # Filename — orange-amber (aqua when repeating); elided with '…' if too long
+        self.lbl_filename = _ElidedLabel("No playlist loaded")
+        self._style_filename(C_FILENAME_NORM, bold=False)
+        info_row.addWidget(self.lbl_filename, stretch=1)
+        centre_layout.addLayout(info_row)
+
+        # ── Row 2: durations | seek slider | position ─────────────────────
+        seek_row = QHBoxLayout()
+        seek_row.setContentsMargins(0, 0, 0, 0)
+        seek_row.setSpacing(max(10, self._fs // 2 + 4))
+
+        # Duration + speed rich-text: '12:19 → 06:09  2×'
         self.lbl_duration = QLabel()
         self.lbl_duration.setTextFormat(Qt.TextFormat.RichText)
         self.lbl_duration.setStyleSheet(
@@ -613,27 +698,7 @@ class HUD(QWidget):
         self.lbl_duration.setAlignment(
             Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
         )
-        info_layout.addWidget(self.lbl_duration)
-
-        info_layout.addSpacing(12)
-
-        # Wall-clock position — green, Roboto-Bold, slightly larger
-        self.lbl_position = self._text_lbl(
-            "00:00", color=C_POSITION,
-            bold=True, font_family=FF_BOLD, font_size=self._fs_pos,
-            align=Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight
-        )
-        self.lbl_position.setFixedWidth(max(70, self._fs_pos * 4))
-        info_layout.addWidget(self.lbl_position)
-        info_layout.addStretch(1)
-
-        info_page.setMouseTracking(True)
-        info_page.installEventFilter(self)   # hover → swap to seek page
-
-        # ── Page 1: seek slider ───────────────────────────────────────────
-        seek_page = QWidget()
-        seek_layout = QHBoxLayout(seek_page)
-        seek_layout.setContentsMargins(8, 0, 8, 0)
+        seek_row.addWidget(self.lbl_duration)
 
         self.seek_slider = QSlider(Qt.Orientation.Horizontal)
         self.seek_slider.setRange(0, 1)
@@ -657,22 +722,20 @@ class HUD(QWidget):
                 border-radius: 3px;
             }
         """)
-        from PySide6.QtWidgets import QSizePolicy
         self.seek_slider.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.seek_slider.setFixedWidth(max(200, int(self._vol_w * 4)))
+        self.seek_slider.setMinimumWidth(200)
         self.seek_slider.setMouseTracking(True)   # hover tooltips without button press
         self.seek_slider.installEventFilter(self)
-        seek_layout.addWidget(self.seek_slider)
-        seek_layout.addSpacing(max(20, self._icon_sz + self._vol_w + 20))  # gap matching speaker+vol width
+        seek_row.addWidget(self.seek_slider, stretch=1)
 
-        seek_page.setMouseTracking(True)
-        seek_page.installEventFilter(self)   # leave → swap back to info page
+        # Wall-clock position — green bold, same font/size as the durations; hugs the slider end
+        self.lbl_position = self._text_lbl("00:00", color=C_POSITION, bold=True)
+        self.lbl_position.setMinimumWidth(max(60, self._fs * 4))
+        seek_row.addWidget(self.lbl_position)
+        centre_layout.addLayout(seek_row)
 
-        self._centre_stack.addWidget(info_page)   # index 0
-        self._centre_stack.addWidget(seek_page)   # index 1
-        self._info_page = info_page
-        self._seek_page = seek_page
-        layout.addWidget(self._centre_stack, stretch=1)
+        layout.addWidget(centre, stretch=1)
+        layout.addSpacing(max(12, self._fs))   # breathing room before speaker icon
 
         # ── Speaker + volume slider (placeholder) ─────────────────────────
         self.btn_speaker = self._icon_btn(self._icon_volume, "Mute / Unmute")
@@ -726,34 +789,23 @@ class HUD(QWidget):
         if rep:
             self.btn_repeat.setIcon(QIcon(rep))
 
-        # Status label — white when playing, yellow + bold when paused
-        if is_paused:
-            self.lbl_status.setText("Paused")
-            self.lbl_status.setStyleSheet(
-                f"color:{C_STATUS_PAUSE}; font-family:{FF_CONDENSED}; "
-                f"font-size:{self._fs}px; font-weight:bold; background:transparent;")
-        else:
-            self.lbl_status.setText("Playing")
-            self.lbl_status.setStyleSheet(
-                f"color:{C_STATUS_PLAY}; font-family:{FF_CONDENSED}; "
-                f"font-size:{self._fs}px; font-weight:normal; background:transparent;")
+        # PAUSED tag — only visible while paused
+        self.lbl_paused.setVisible(is_paused)
 
-        # File number + name
+        # "Video N of Total · name"  /  "Sub-Video N of Total · name"
         if filename:
-            name        = os.path.splitext(filename)[0]
-            fname_color = C_FILENAME_LOOP if is_repeating else C_FILENAME_NORM
-            fname_weight = "bold" if is_repeating else "normal"
-            self.lbl_filenum.setText(f"{index} of {total}:  " if total else "")
+            name   = os.path.splitext(filename)[0]
+            prefix = "Sub-Video" if self.sub_mode else "Video"
+            self.lbl_filenum.setText(f"{prefix} {index} of {total}" if total else "")
+            self.lbl_sep.setVisible(bool(total))
             self.lbl_filename.setText(name)
-            self.lbl_filename.setStyleSheet(
-                f"color:{fname_color}; font-family:{FF_CONDENSED}; "
-                f"font-size:{self._fs}px; font-weight:{fname_weight}; background:transparent;")
+            self._style_filename(C_FILENAME_LOOP if is_repeating else C_FILENAME_NORM,
+                                 bold=is_repeating)
         else:
             self.lbl_filenum.setText("")
+            self.lbl_sep.hide()
             self.lbl_filename.setText("No playlist loaded")
-            self.lbl_filename.setStyleSheet(
-                f"color:{C_FILENAME_NORM}; font-family:{FF_CONDENSED}; "
-                f"font-size:{self._fs}px; font-weight:normal; background:transparent;")
+            self._style_filename(C_FILENAME_NORM, bold=False)
 
         # Duration + speed (rich HTML)
         self.lbl_duration.setText(_duration_html(duration_ms, speed))
@@ -763,17 +815,15 @@ class HUD(QWidget):
             _format_time(position_ms) if (position_ms > 0 or duration_ms > 0) else "00:00"
         )
 
-    # ──────────────────────────────────────────────
-    # Mute toggle
-    # ──────────────────────────────────────────────
+    def _style_filename(self, color, bold):
+        weight = "bold" if bold else "normal"
+        self.lbl_filename.setStyleSheet(
+            f"color:{color}; font-family:{FF_CONDENSED}; "
+            f"font-size:{self._fs}px; font-weight:{weight}; background:transparent;")
 
-    def _show_seek_page(self):
-        if self._centre_stack.currentIndex() != 1:
-            self._centre_stack.setCurrentIndex(1)
-
-    def _show_info_page(self):
-        if self._centre_stack.currentIndex() != 0:
-            self._centre_stack.setCurrentIndex(0)
+    # ──────────────────────────────────────────────
+    # Seek slider
+    # ──────────────────────────────────────────────
 
     def update_seek_slider(self, position_ms: int, duration_ms: int) -> None:
         """Called from _tick_position; only moves handle when not dragging."""
@@ -828,20 +878,22 @@ class HUD(QWidget):
             self.btn_speaker.setIcon(QIcon(icon))
 
     # ──────────────────────────────────────────────
-    # Filter toggle (placeholder)
+    # Model filter (sub-playlist) toggle
     # ──────────────────────────────────────────────
 
     def _toggle_filter(self):
-        self._filter_visible = not self._filter_visible
-        icon = self._icon_filter_off if self._filter_visible else self._icon_filter_on
+        self.mw.toggle_sub_playlist()
+
+    def set_filter_active(self, active):
+        """Called by MainWindow when sub-playlist mode changes; swaps the icon."""
+        self._filter_visible = active
+        icon = self._icon_filter_off if active else self._icon_filter_on
         if icon:
             self.btn_filter.setIcon(QIcon(icon))
-        self.mw.show_osd("Filter Panel — TODO", duration_ms=1500)
 
     # ──────────────────────────────────────────────
     # Visibility / positioning
     # ──────────────────────────────────────────────
-
     def _opacity_hide(self):
         self.setWindowOpacity(0.0)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
@@ -862,9 +914,30 @@ class HUD(QWidget):
         self._opacity_hide()
 
     def _reposition(self):
-        global_pos = self.mw.mapToGlobal(QPoint(0, self.mw.height() - self._hud_height))
-        self.resize(self.mw.width(), self._hud_height)
-        self.move(global_pos)
+        """
+        Anchor HUD to the actual current screen, not to the parent window's
+        transient/global mapping. This avoids wrong placement on 1080p,
+        mixed-DPI, and multi-GPU multi-monitor setups.
+        """
+        screen = self.mw.screen()
+        if screen is None:
+            return
+
+        sr = screen.geometry()
+
+        # If the window was moved to another monitor after HUD construction,
+        # update size metrics before placing it.
+        screen_name = screen.name()
+        if screen_name != self._screen_name:
+            self._screen_name = screen_name
+            self._configure_for_screen(sr)
+
+        self.setGeometry(
+            sr.x(),
+            sr.y() + sr.height() - self._hud_height,
+            sr.width(),
+            self._hud_height,
+        )
 
     # ──────────────────────────────────────────────
     # Mouse-over: pause / resume hide timer
@@ -940,17 +1013,6 @@ class HUD(QWidget):
             if t == QEvent.Type.Leave:
                 QToolTip.hideText()
                 return False
-
-        # Info page: mouse enters → swap to seek slider
-        if hasattr(self, '_info_page') and obj is self._info_page and t == QEvent.Type.Enter:
-            self._show_seek_page()
-            return False
-
-        # Seek page: mouse leaves (and not dragging) → swap back to info
-        if hasattr(self, '_seek_page') and obj is self._seek_page and t == QEvent.Type.Leave:
-            if not self._seek_dragging:
-                self._show_info_page()
-            return False
 
         return super().eventFilter(obj, event)
 

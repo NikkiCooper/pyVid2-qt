@@ -30,6 +30,7 @@ def cmdLineOptions():
     # Video Playback Options
     video_group = parser.add_argument_group(chl.group["video_group"])
     video_group.add_argument("--loop",      action="store_true",                         help=chl.help["loop"])
+    video_group.add_argument("--noFilterLoop", action="store_true",                      help=chl.help["noFilterLoop"])
     video_group.add_argument("--decoder",   choices=['auto','nvdec','vulkan','vaapi','software'],
                                             default='auto', metavar='DECODER',           help=chl.help["decoder"])
     video_group.add_argument("--shuffle",   action="store_true",                         help=chl.help["shuffle"])
@@ -68,6 +69,8 @@ def cmdLineOptions():
     system_group.add_argument("--ir-keymap",action="store", type=str, dest="irKeymap", default=None, help=chl.help["ir_keymap"])
     system_group.add_argument("--disable-IR", action="store_true", dest="disable_IR",   help=chl.help["disable_IR"])
     system_group.add_argument("--metadata",   action="store_true",                       help=chl.help["metadata"])
+    system_group.add_argument("--cursorHide", type=validate_cursor_hide, default=2.0, metavar="SEC",
+                                              help=chl.help["cursorHide"])
 
     # File Options
     file_group = parser.add_argument_group(chl.group["file_group"])
@@ -209,6 +212,20 @@ def validate_volume(x):
         raise argparse.ArgumentTypeError(
             f"{bc.Light_Yellow_f}Volume must be{bc.Green_f} 0{bc.Light_Yellow_f}–"
             f"{bc.Green_f}100{bc.Light_Yellow_f}, got{bc.Red_f} {val}{bc.RESET}")
+    return val
+
+
+def validate_cursor_hide(x):
+    """Validate --cursorHide: seconds 0–60 (0 = never hide)."""
+    try:
+        val = float(x)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"{bc.Red_f}'{x}'{bc.Light_Yellow_f} is not a valid number{bc.RESET}")
+    if not 0 <= val <= 60:
+        raise argparse.ArgumentTypeError(
+            f"{bc.Light_Yellow_f}Cursor hide delay must be{bc.Green_f} 0{bc.Light_Yellow_f}–"
+            f"{bc.Green_f}60{bc.Light_Yellow_f} seconds, got{bc.Red_f} {val}{bc.RESET}")
     return val
 
 

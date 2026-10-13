@@ -245,6 +245,7 @@ pyVid \
 | `--display` \<N>      | active display | Target a specific monitor by index |
 | `--verbose`           | off | Enable verbose console output |
 | `--metadata`          | off | Print video metadata to the console |
+`| `--cursorHide` \<sec> | `2` | Hide the mouse cursor after this many idle seconds (`0` = never) |
 | `--udp-port` \<port>  | `5005` | UDP port for IR remote control commands |
 | `--ir-keymap` \<path> | `~/.local/share/`<br>`pyVid2-qt/ir_keymap.conf` | Path to a custom IR remote keymap file |
 | `--disable-IR`        | off | Disable the IR remote control UDP listener |

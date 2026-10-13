@@ -35,6 +35,8 @@ help = dict(
           f"{bc.Magenta_f}Specify: {bc.Green_f}<pattern> <pattern> ...{bc.RESET}"),
     #
     loop=f"{bc.Light_Yellow_f}Loop videos instead of exiting{bc.RESET}",
+    noFilterLoop=f"{bc.Light_Yellow_f}With {bc.Green_f}--loop{bc.Light_Yellow_f}: do not loop the model sub-playlist ({bc.Green_f}F{bc.Light_Yellow_f});\n"
+                 f"return to the master playlist when it ends.  No effect without {bc.Green_f}--loop{bc.RESET}",
     decoder=(f"{bc.Light_Yellow_f}Hardware decoder to use.\n"
              f"{bc.Magenta_f}Choices: {bc.Green_f}auto  nvdec  vulkan  vaapi  software\n"
              f"{bc.Magenta_f}Default: {bc.Green_f}auto{bc.RESET}"),
@@ -71,6 +73,9 @@ help = dict(
     ir_keymap=f"{bc.Light_Yellow_f}Path to a custom {bc.White_f}IR Remote Control{bc.Light_Yellow_f} keymap file.\n{bc.Magenta_f}Default: {bc.Green_f}~/.local/share/pyVid2-qt/ir_keymap.conf{bc.RESET}",
     disable_IR=f"{bc.Light_Yellow_f}Disable the {bc.White_f}IR Remote Control{bc.Light_Yellow_f} UDP listener.\n{bc.Magenta_f}Default: {bc.Green_f}IR Remote enabled{bc.RESET}",
     metadata=f"{bc.Light_Yellow_f}Enable metadata output to the console.\n{bc.Magenta_f}Default: {bc.Green_f}disabled{bc.RESET}",
+    cursorHide=(f"{bc.Light_Yellow_f}Hide the mouse cursor after {bc.Green_f}SEC{bc.Light_Yellow_f} seconds without movement\n"
+                f"({bc.Green_f}0{bc.Light_Yellow_f} = never hide).  Moving the mouse brings it back.\n"
+                f"{bc.Magenta_f}Default: {bc.Green_f}2{bc.RESET}"),
     #
     noIgnore=f"{bc.Light_Yellow_f}Do not honor {bc.Green_f}.ignore{bc.Light_Yellow_f} files.{bc.RESET}",
     noRecurse=f"{bc.Light_Yellow_f}Do not recurse into subfolders (applies to {bc.White_f}--Paths{bc.Light_Yellow_f} and {bc.White_f}--Glob{bc.Light_Yellow_f}).{bc.RESET}",

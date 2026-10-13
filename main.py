@@ -66,10 +66,11 @@ def main():
 
     # Parse CLI args BEFORE QApplication so decoder setup (rank changes, env vars)
     # happens before Qt's multimedia stack initializes its GStreamer pipeline.
-    opts = None
-    if len(sys.argv) > 1:
-        from cmdLineOpts import cmdLineOptions
-        opts = cmdLineOptions()   # argparse reads original sys.argv, sees --display
+    # Always parse — even with no args — so argparse enforces the required
+    # source options (--Paths / --Files / --loadPlayList / --Glob) and exits
+    # with usage instead of MainWindow crashing on opts=None.
+    from cmdLineOpts import cmdLineOptions
+    opts = cmdLineOptions()   # argparse reads original sys.argv, sees --display
 
     # Speed-tag tool operations (--addAutoSpeed / --delAutoSpeed / --searchAutoSpeed)
     # run without Qt — exit immediately after.
@@ -92,7 +93,8 @@ def main():
     app = QApplication(_qt_argv())
     window = MainWindow(opts=opts)
     window.show()
-    sys.exit(app.exec())
+    rc = app.exec()
+    sys.exit(rc or window.exit_code)
 
 if __name__ == "__main__":
     main()
