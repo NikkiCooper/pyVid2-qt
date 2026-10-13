@@ -10,6 +10,7 @@ import re as _re
 
 from Bcolors import Bcolors
 import cmdLineHelp as chl
+from SpeedTag import VALID_SPEEDS
 
 bc = Bcolors()
 
@@ -101,9 +102,9 @@ def cmdLineOptions():
             sv = float(args.searchAutoSpeed)
         except ValueError:
             parser.error(f"--searchAutoSpeed: '{args.searchAutoSpeed}' is not a valid speed value")
-        if sv not in {round(i * 0.5, 1) for i in range(1, 13)}:
+        if sv not in VALID_SPEEDS:
             parser.error(f"--searchAutoSpeed: {sv} is not a valid speed "
-                         f"(must be 0.5–6.0 in 0.5 increments)")
+                         f"(must be 0.5–10.0 in 0.5 increments)")
         args.searchAutoSpeed = sv
     # "any" remains as-is; run_tag_tool converts it to None (search all speeds)
 
@@ -230,31 +231,32 @@ def validate_cursor_hide(x):
 
 
 def validate_speed_tag(x):
-    """Validate --addAutoSpeed: must be 0.5–6.0 in 0.5 increments."""
+    """Validate --addAutoSpeed: must be 0.5–10.0 in 0.5 increments."""
     try:
         val = float(x)
     except ValueError:
         raise argparse.ArgumentTypeError(
             f"{bc.Red_f}'{x}'{bc.Light_Yellow_f} is not a valid number{bc.RESET}")
-    valid = {round(i * 0.5, 1) for i in range(1, 13)}
-    if val not in valid:
+    if val not in VALID_SPEEDS:
         raise argparse.ArgumentTypeError(
-            f"{bc.Light_Yellow_f}Speed must be one of: "
-            f"{bc.Green_f}0.5 1 1.5 2 2.5 3 3.5 4 4.5 5 5.5 6{bc.RESET}")
+            f"{bc.Light_Yellow_f}Speed must be{bc.Green_f} 0.5{bc.Light_Yellow_f}–"
+            f"{bc.Green_f}10{bc.Light_Yellow_f} in{bc.Green_f} 0.5{bc.Light_Yellow_f} increments, "
+            f"got{bc.Red_f} {val}{bc.RESET}")
     return val
 
 
 def restricted_float_or_int(x):
-    """Validate --playSpeed: float or int between 0.5 and 10.0."""
+    """Validate --playSpeed: 0.5–10.0 in 0.5 increments (the steps the +/- keys move through)."""
     try:
         x = float(x)
     except ValueError:
         raise argparse.ArgumentTypeError(
             f"{bc.Red_f}{x}{bc.Light_Yellow_f} is not a valid number{bc.RESET}")
 
-    if x < 0.5 or x > 10.0:
+    if x not in VALID_SPEEDS:
         raise argparse.ArgumentTypeError(
-            f"{bc.Light_Yellow_f}Value must be between{bc.Green_f} 0.5{bc.Light_Yellow_f} and"
-            f"{bc.Green_f} 10.0{bc.Light_Yellow_f}, but got{bc.Red_f} {x}{bc.RESET}")
+            f"{bc.Light_Yellow_f}Value must be{bc.Green_f} 0.5{bc.Light_Yellow_f}–"
+            f"{bc.Green_f}10.0{bc.Light_Yellow_f} in{bc.Green_f} 0.5{bc.Light_Yellow_f} increments, "
+            f"but got{bc.Red_f} {x}{bc.RESET}")
 
     return int(x) if x.is_integer() else x

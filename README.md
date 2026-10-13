@@ -21,6 +21,7 @@ Designed for unattended or kiosk-style playback — shuffle, loop, variable spee
 - [Running](#running-after-basic-install)
 - [Command-Line Reference](#command-line-reference)
 - [Controlling Playback with `.ignore` Files](#controlling-playback-with-ignore-files)
+- [Sub-Playlists (Model Filter)](#sub-playlists-model-filter)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [IR Remote Control](#ir-remote-control)
 - [Hardware Decoder Selection](#hardware-decoder-selection)
@@ -194,14 +195,13 @@ pyVid \
 ---
 
 ## Command-Line Reference
-
 ### Source (one or more required, may be combined)
 
 | Cmd Line Argument               | Description |
 |-------------------------------------|---|
 | `--Paths` \<dir> [dir ...]          | Directories to scan recursively for video files |
 | `--Files` \<file> [file ...]        | Explicit video files to load and play |
-| `--loadPlayList` \<file> [file ...] | Load playlist files (one path per line) |
+| `--loadPlayList` \<file> [file ...] | Load playlist files (one path per line). A relative name is looked up in the current directory, then in `$PLAYLIST_HOME` |
 | `--Glob` \<pattern> [pattern ...]   | Glob or numeric-range patterns. Supports `*`, `?`, `[...]`, `{N-M}`, `{N-}` |
 
 ### Video Playback Options
@@ -209,12 +209,16 @@ pyVid \
 | Cmd Line Argument    | Default | Description                                                  |
 |----------------------|---------|--------------------------------------------------------------|
 | `--loop`             | off     | Loop playlist instead of exiting at the end                  |
+| `--noFilterLoop`     | off     | With `--loop`: don't loop a [sub-playlist](#sub-playlists-model-filter); return to the master playlist when it ends |
 | `--shuffle`          | off     | Play videos in random order                                  |
 | `--loopDelay` \<sec> | 1       | Delay in seconds between videos                              |
-| `--playSpeed` \<spd> | 2.0     | Playback speed multiplier 0.5 - 6.0 in 0.5 increments        |
+| `--playSpeed` \<spd> | 2.0     | Playback speed multiplier 0.5 - 10.0 in 0.5 increments       |
 | `--decoder` \<dec>   | auto    | Hardware decoder: `auto` `nvdec` `vulkan` `vaapi` `software` |
-| `--enableOSDcurpos`  | off     | Show always-visible playlist position counter (upper-left).  |
+| `--enableOSDcurpos`  | off     | Show always-visible playback position counter (upper-left). Toggle with `O` |
 | `--autoSpeed`        | off     | Honour `auto_speed` XMP tags embedded in video files         |
+
+> Speeds above 6× need proportionally more decoding work. 10× has been tested with 1080p HEVC
+> on VA-API; 4K or 60 fps sources may not keep up at the highest speeds on slower GPUs.
 
 ### Audio Options
 
@@ -242,10 +246,10 @@ pyVid \
 
 | Cmd Line Argument | Default | Description |
 |-----------------------|---|---|
-| `--display` \<N>      | active display | Target a specific monitor by index |
+| `--display` \<N>      | active display | Target a specific monitor by index (`0`, `1`, …) or part of its name (case-sensitive, e.g. `HDMI`) |
 | `--verbose`           | off | Enable verbose console output |
 | `--metadata`          | off | Print video metadata to the console |
-`| `--cursorHide` \<sec> | `2` | Hide the mouse cursor after this many idle seconds (`0` = never) |
+| `--cursorHide` \<sec> | `2` | Hide the mouse cursor after this many idle seconds (`0` = never) |
 | `--udp-port` \<port>  | `5005` | UDP port for IR remote control commands |
 | `--ir-keymap` \<path> | `~/.local/share/`<br>`pyVid2-qt/ir_keymap.conf` | Path to a custom IR remote keymap file |
 | `--disable-IR`        | off | Disable the IR remote control UDP listener |
@@ -257,7 +261,7 @@ These operate on video file metadata (XMP tags) and exit immediately after runni
 
 | Cmd Line Argument         | Description                                                                                                                             |
 |---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| `--addAutoSpeed` \<spd>   | Write an `auto_speed` XMP tag to matched files. Speed must be in range of `0.5 - 6` in `0.5` increments |
+| `--addAutoSpeed` \<spd>   | Write an `auto_speed` XMP tag to matched files. Speed must be in range of `0.5 - 10` in `0.5` increments |
 | `--delAutoSpeed`          | Remove the `auto_speed` XMP tag from matched files. Prompts for confirmation.                                                           |
 | `--searchAutoSpeed` [spd] | Search for `auto_speed` tags and print a report. Omit speed to list all tagged files.                                                   |
 | `--dryRun`                | Preview what `--addAutoSpeed` or `--delAutoSpeed` would do without modifying any files                                                  |
@@ -336,6 +340,50 @@ pyVid --printIgnoreList --Paths /mnt/Videos
 
 ---
 
+## Sub-Playlists (Model Filter)
+
+With a large master playlist (hundreds or thousands of videos), a sub-playlist lets you
+stay with whatever is playing right now: one key press narrows playback to every video in
+the master playlist that shares the current video's **model name**, then returns you to
+the master playlist when you are done.
+
+### Model name
+
+The model name is the part of the filename **before the first `-`**, with surrounding
+spaces trimmed. Matching is exact and case-sensitive. A filename with no `-` uses its
+whole name (without extension).
+
+| Filename                            | Model name           |
+|-------------------------------------|----------------------|
+| `Eugenia-Slideshow-103_Kenburns.mp4` | `Eugenia`            |
+| `Nikki C-Slideshow-Japan Vacation.mp4` | `Nikki C`            |
+| `Barbara B Princess-034.mp4`        | `Barbara B Princess` |
+
+### Using it
+
+| Control | Action |
+|---|---|
+| `F` key / IR `FILTER` / HUD filter button | Sub-playlist **on**: collect every master entry with the same model name, sort them, and start playing the first one |
+| `F` key / IR `FILTER` / HUD filter button (again) | Sub-playlist **off**: return to the master playlist at the next video after where you left it, skipping the sub-playlist's model |
+| `J` | Shuffle / sort the sub-playlist (independent of the master playlist's shuffle state) |
+| `,` (Comma) | Print the sub-playlist to the console |
+| `.` (Period) | Save the sub-playlist to `~/+Playlists/<Model>-Playlist-<count>.txt` |
+
+While a sub-playlist is active, the HUD shows **Sub-Video N of T** instead of **Video N of T**.
+
+### When the sub-playlist ends
+
+| Options | Result |
+|---|---|
+| `--loop` | The sub-playlist starts over |
+| `--loop --noFilterLoop` | Return to the master playlist (which keeps looping) |
+| no `--loop` | Return to the master playlist — a sub-playlist never ends the program |
+
+> If the current model has only one video, `F` turns on **Repeat Video** instead.
+> If every video in the master playlist has the same model name, there is nothing to filter and `F` does nothing.
+
+---
+
 ## Keyboard Shortcuts
 
 All shortcuts work while the player window is focused.
@@ -363,7 +411,7 @@ All shortcuts work while the player window is focused.
 
 | Key | Action |
 |---|---|
-| `+` or `=` | Increase playback speed (steps: 0.5 → 1.0 → 1.5 → … → 6.0) |
+| `+` or `=` | Increase playback speed (steps: 0.5 → 1.0 → 1.5 → … → 10.0) |
 | `-` | Decrease playback speed |
 
 ### Audio
@@ -387,7 +435,8 @@ All shortcuts work while the player window is focused.
 
 | Key | Action |
 |---|---|
-| `J` | Toggle shuffle (randomize / sort playlist) |
+| `J` | Toggle shuffle (randomize / sort the active playlist) |
+| `F` | [Sub-playlist](#sub-playlists-model-filter) of the current model On / Off |
 | `,` (Comma) | Print playlist to console |
 | `.` (Period) | Save current playlist to a file |
 | `Insert` | Show video metadata |
@@ -414,7 +463,7 @@ Remote button names map to player actions via `~/.local/share/pyVid2-qt/ir_keyma
 | IR Button | Action |
 |---|---|
 | `PWR` | Quit program |
-| `PLAY_PAUSE` / `PLAY_PSE` | Play / Pause |
+| `PLAY_PAUSE` | Play / Pause |
 | `PLAY_NEXT` | Next video |
 | `PLAY_PREV` | Previous video |
 | `FWD` | Seek forward 10 seconds (repeats while held) |
@@ -429,6 +478,8 @@ Remote button names map to player actions via `~/.local/share/pyVid2-qt/ir_keyma
 | `SCREENSHOT` / `SCRNSHOT` | Take a screenshot |
 | `MENU` | Show help overlay |
 | `HUD` | Toggle HUD pin (keep HUD visible) |
+| `FILTER` | [Sub-playlist](#sub-playlists-model-filter) of the current model On / Off |
+| `SHUFFLE` | Randomize (shuffle) playlist |
 | `1` | Cycle position OSD: Off → position → position/duration → Off |
 | `3` | Save current playlist to a file |
 | `4` | Print playlist to console |
@@ -447,7 +498,7 @@ Remote button names map to player actions via `~/.local/share/pyVid2-qt/ir_keyma
 At startup, pyVid2-qt probes available GStreamer decoder elements and prints a status table:
 
 ```
-pyVid2-qt  version 0.75
+pyVid2-qt  version 0.95
 ────────────────────────────────────────────────────────
   Decoder:  VA-API      vah264dec                       [active]
             NVDEC       —                               [not available]

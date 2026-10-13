@@ -26,7 +26,9 @@ group = dict(
 help = dict(
     Paths=f"{bc.Light_Yellow_f}Directories to scan for playable media.\n{bc.Magenta_f}Specify: {bc.Green_f}<Path> <Path> <Path> ...{bc.RESET}",
     Files=f"{bc.Light_Yellow_f}Load & play supported media.\n{bc.Magenta_f}Specify: {bc.Green_f}<File> <File> <File> ...{bc.RESET}",
-    loadPlayList=f"{bc.Light_Yellow_f}Load and play a playlist from a file.\n{bc.Magenta_f}Specify:{bc.Green_f} /path/PlaylistName{bc.RESET}",
+    loadPlayList=(f"{bc.Light_Yellow_f}Load and play a playlist from a file.\n"
+                  f"A relative name is looked up in the current directory, then in {bc.Green_f}$PLAYLIST_HOME{bc.Light_Yellow_f}.\n"
+                  f"{bc.Magenta_f}Specify:{bc.Green_f} /path/PlaylistName{bc.RESET}"),
     Glob=(f"{bc.Light_Yellow_f}Glob / numeric-range patterns to match video files.\n"
           f"{bc.Magenta_f}Supports: {bc.Green_f}*  ?  [...]  {{N-M}}  {{N-}}\n"
           f"{bc.Magenta_f}  {{N-M}}{bc.Light_Yellow_f} numeric range, e.g. {bc.Green_f}Set{{001-020}}/*.mp4\n"
@@ -42,8 +44,8 @@ help = dict(
              f"{bc.Magenta_f}Default: {bc.Green_f}auto{bc.RESET}"),
     shuffle=f"{bc.Light_Yellow_f}Play videos in random order{bc.RESET}",
     loopDelay=f"{bc.Light_Yellow_f}The delay in seconds between each video.\n{bc.Magenta_f}Default:{bc.Green_f} 1{bc.Light_Yellow_f} sec{bc.Magenta_f} (recommended){bc.RESET}",
-    playSpeed=f"{bc.Light_Yellow_f}Set playback speed ({bc.Green_f}0.5{bc.Light_Yellow_f} - {bc.Green_f}10.0{bc.Light_Yellow_f})\n{bc.Magenta_f}Default: {bc.Green_f}2.0{bc.RESET}",
-    enableOSDcurpos=(f"{bc.Light_Yellow_f}Show always-visible position counter (upper-left).\n"
+    playSpeed=f"{bc.Light_Yellow_f}Set playback speed ({bc.Green_f}0.5{bc.Light_Yellow_f} - {bc.Green_f}10.0{bc.Light_Yellow_f} in {bc.Green_f}0.5{bc.Light_Yellow_f} increments)\n{bc.Magenta_f}Default: {bc.Green_f}2.0{bc.RESET}",
+    enableOSDcurpos=(f"{bc.Light_Yellow_f}Show always-visible playback position counter (upper-left).\n"
                      f"{bc.Magenta_f}Toggle:{bc.Green_f} o{bc.Light_Yellow_f} key  |  IR:{bc.Green_f} 1\n"
                      f"{bc.Magenta_f}Default:{bc.Green_f} off{bc.RESET}"),
     autoSpeed=(f"{bc.Light_Yellow_f}Honour {bc.Green_f}auto_speed{bc.Light_Yellow_f} XMP tags embedded in video files.\n"
@@ -52,8 +54,8 @@ help = dict(
                f"{bc.Magenta_f}Default:{bc.Green_f} off{bc.RESET}"),
     #
     addAutoSpeed=(f"{bc.Light_Yellow_f}Write an {bc.Green_f}auto_speed{bc.Light_Yellow_f} XMP tag to video files.\n"
-                  f"{bc.Magenta_f}Specify: {bc.Green_f}SPEED{bc.Light_Yellow_f} — one of: "
-                  f"{bc.Green_f}0.5 1 1.5 2 2.5 3 3.5 4 4.5 5 5.5 6\n"
+                  f"{bc.Magenta_f}Specify: {bc.Green_f}SPEED{bc.Light_Yellow_f}: "
+                  f"{bc.Green_f}0.5{bc.Light_Yellow_f} - {bc.Green_f}10{bc.Light_Yellow_f} in {bc.Green_f}0.5{bc.Light_Yellow_f} increments\n"
                   f"{bc.Light_Yellow_f}Existing tag is replaced.  Use with {bc.White_f}--dryRun{bc.Light_Yellow_f} to preview.\n"
                   f"{bc.Magenta_f}Sources: {bc.Green_f}--Paths  --Files  --Glob{bc.Light_Yellow_f}  (not --loadPlayList){bc.RESET}"),
     delAutoSpeed=(f"{bc.Light_Yellow_f}Delete the {bc.Green_f}auto_speed{bc.Light_Yellow_f} XMP tag from video files.\n"
@@ -68,7 +70,7 @@ help = dict(
             f"{bc.White_f}--delAutoSpeed{bc.Light_Yellow_f} would do — no files are modified.{bc.RESET}"),
     #
     verbose=f"{bc.Light_Yellow_f}Enable verbose output.{bc.RESET}",
-    display=f"{bc.Light_Yellow_f}Enable output on a specific display.\n{bc.Magenta_f}Default: {bc.Green_f}The currently active display{bc.RESET}",
+    display=f"{bc.Light_Yellow_f}Enable output on a specific display: index ({bc.Green_f}0{bc.Light_Yellow_f}, {bc.Green_f}1{bc.Light_Yellow_f}, …) or\npart of its name (case-sensitive, e.g. {bc.Green_f}HDMI{bc.Light_Yellow_f}).\n{bc.Magenta_f}Default: {bc.Green_f}The currently active display{bc.RESET}",
     udp_port=f"{bc.Light_Yellow_f}UDP port to listen on for {bc.White_f}IR Remote Control{bc.Light_Yellow_f} commands.\n{bc.Magenta_f}Default: {bc.Green_f}5005{bc.RESET}",
     ir_keymap=f"{bc.Light_Yellow_f}Path to a custom {bc.White_f}IR Remote Control{bc.Light_Yellow_f} keymap file.\n{bc.Magenta_f}Default: {bc.Green_f}~/.local/share/pyVid2-qt/ir_keymap.conf{bc.RESET}",
     disable_IR=f"{bc.Light_Yellow_f}Disable the {bc.White_f}IR Remote Control{bc.Light_Yellow_f} UDP listener.\n{bc.Magenta_f}Default: {bc.Green_f}IR Remote enabled{bc.RESET}",

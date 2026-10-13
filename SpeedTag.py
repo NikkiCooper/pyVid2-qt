@@ -34,7 +34,8 @@ bc = Bcolors()
 
 TAG_KEY       = "auto_speed"
 TAG_ET_KEY    = "XMP-pyvid2:AutoSpeed"    # ExifTool argument form (namespace-qualified)
-VALID_SPEEDS  = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0]
+# 0.5 … 10.0 in 0.5 steps — single source for --playSpeed, speed tags and the +/- keys
+VALID_SPEEDS  = [i * 0.5 for i in range(1, 21)]
 WARN_THRESHOLD = 20          # files at or above this count require 'Yes' for --addAutoSpeed
 BATCH_SIZE     = 400         # max files per ExifTool invocation
 

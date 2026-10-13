@@ -16,7 +16,6 @@ import Bcolors
 bc = Bcolors.Bcolors()
 
 SEEK_TIME_SECONDS = 10
-SPEED_STEPS  = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0]
 VOLUME_STEP  = 0.05    # 5% per key/IR press
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel
@@ -25,7 +24,9 @@ from PySide6.QtGui import QCursor, QPainter, QColor, QPen
 from IRRemoteControl import IRRemoteControl
 from ui.hud import HUD, CurPosOsd
 from core.video_widget import VideoWidget
-from SpeedTag import read_tag, tag_label
+from SpeedTag import read_tag, tag_label, VALID_SPEEDS
+
+SPEED_STEPS = VALID_SPEEDS   # +/- key steps: 0.5 … 10.0
 
 
 def model_name(path):
