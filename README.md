@@ -424,12 +424,12 @@ All shortcuts work while the player window is focused.
 
 ### Display & OSD
 
-| Key | Action |
-|---|---|
+| Key | Action                                                       |
+|---|--------------------------------------------------------------|
 | `O` | Cycle position OSD: Off → position → position/duration → Off |
-| `T` | Toggle video title display |
-| `G` | Toggle greyscale |
-| `H` | Show help overlay (cycles: keyboard → IR remote → Off) |
+| `T` | ~~Toggle video title display~~                               |
+| `G` | ~~Toggle greyscale~~                                         |
+| `H` | Show help overlay (cycles: keyboard → IR remote → Off)       |
 
 ### Playlist
 
