@@ -13,7 +13,15 @@ import ctypes
 # Force X11 (XWayland) — on native Wayland, Qt cannot position top-level windows;
 # the compositor ignores all geometry hints. X11 gives full positioning control.
 # VA-API hardware decode is unaffected (it uses DRM/libva, not the display server).
-os.environ.setdefault('QT_QPA_PLATFORM', 'xcb')
+# os.environ.setdefault  will not set QT_QPA_PLATFORM=xcb if QT_QPA_PLATFORM is already set
+# If QT_QPA_PLATFORM=wayland, Qt will not position top-level windows. and os.environ.setdefault
+# will not set QT_QPA_PLATFORM=xcb if QT_QPA_PLATFORM is already set.  This is a major bug as a result.
+# Therefore, we explicitly set QT_QPA_PLATFORM=xcb, whether it is already set or not.
+#
+# if 'QT_QPA_PLATFORM' not in os.environ:
+#   os.environ.setdefault('QT_QPA_PLATFORM', 'xcb')
+
+os.environ['QT_QPA_PLATFORM'] = 'xcb'
 
 # Suppress Qt multimedia framework logging (codec/stream info on stderr)
 os.environ.setdefault('QT_LOGGING_RULES', 'qt.multimedia.*=false')
