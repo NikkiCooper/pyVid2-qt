@@ -6,5 +6,6 @@ __pycache__/
 .claude
 DEVELOPMENT.md
 DualMonitorDesign.md
+pyvid2_diag.sh
 ui/ORG
 *~
