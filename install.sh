@@ -18,6 +18,8 @@ DATA_DIR="$HOME/.local/share/pyVid2-qt"
 BIN_DIR="$HOME/bin"
 VENV_DIR="$SCRIPT_DIR/.venv"
 LAUNCHER="$BIN_DIR/pyVid"
+BASH_COMPLETION_SRC="$ASSETS_DIR/pyVid2-bash-completion.sh"
+BASH_COMPLETION_DST="$BIN_DIR/pyVid2-bash-completion.sh"
 
 # ── Colours ────────────────────────────────────────────────────────────────────
 BOLD='\033[1m'
@@ -52,6 +54,7 @@ echo -e "      ${BOLD}${CYAN}• exiftool${RESET}${DIM}        — required only
 echo
 echo -e "${BOLD}${YELLOW}These must be already installed prior to running this script${RESET}"
 echo
+
 # ── Installation mode selection ────────────────────────────────────────────────
 echo -e "${BOLD}Choose an installation mode:${RESET}"
 echo
@@ -61,12 +64,13 @@ echo -e "      ${DIM}• Creates a Python virtual environment inside the project
 echo -e "      ${DIM}• Installs Python dependencies (PySide6, python-magic) into the venv${RESET}"
 echo -e "      ${DIM}• Creates ~/bin/pyVid — a launcher script that activates the venv${RESET}"
 echo -e "        and runs pyVid2-qt; adds ~/bin to PATH in ~/.bashrc${RESET}"
+echo -e "      ${DIM}• Installs ~/bin/pyVid2-bash-completion.sh and sources it from ~/.bashrc${RESET}"
 echo
 echo -e "        ${BOLD}  After install: run 'pyVid --Paths /your/videos [options]'${RESET}"
 echo
 echo -e "  ${BOLD}[A] ADVANCED${RESET}"
 echo -e "      ${DIM}• Creates ~/.local/share/pyVid2-qt and installs fonts and icons only${RESET}"
-echo -e "      ${DIM}• Python environment, dependencies, and PATH are managed by you${RESET}"
+echo -e "      ${DIM}• Python environment, dependencies, PATH, and shell completion are managed by you${RESET}"
 echo
 echo -e "        ${BOLD}  After install: run 'python ${SCRIPT_DIR}/main.py --Paths /your/videos [options]'${RESET}"
 echo
@@ -111,6 +115,11 @@ if [[ "${MODE^^}" == "A" ]]; then
     echo -e "  Assets are installed to ${CYAN}$DATA_DIR${RESET}"
     echo -e "  Manage your Python environment and run:"
     echo -e "  ${CYAN}python $SCRIPT_DIR/main.py --Paths /your/videos [options]${RESET}"
+    echo
+    echo -e "  Bash completion is available at:"
+    echo -e "  ${CYAN}$BASH_COMPLETION_SRC${RESET}"
+    echo -e "  To enable pyVid shell completion, install pyVid2-bash-completion.sh manually"
+    echo -e "  and source it from your shell startup file."
     echo
     exit 0
 fi
@@ -180,13 +189,22 @@ LAUNCHER_EOF
 chmod +x "$LAUNCHER"
 info "Launcher created   → $LAUNCHER"
 
-# ── BASIC: Step 5 — PATH in ~/.bashrc ─────────────────────────────────────────
+# ── BASIC: Step 5 — bash completion ───────────────────────────────────────────
+heading "Installing bash completion: $BASH_COMPLETION_DST"
+
+if [[ -f "$BASH_COMPLETION_SRC" ]]; then
+    cp "$BASH_COMPLETION_SRC" "$BASH_COMPLETION_DST"
+    chmod +x "$BASH_COMPLETION_DST"
+    info "Bash completion installed → $BASH_COMPLETION_DST"
+else
+    warn "Bash completion script not found at $BASH_COMPLETION_SRC — skipping."
+fi
+
+# ── BASIC: Step 6 — PATH in ~/.bashrc ─────────────────────────────────────────
 heading "Updating PATH in ~/.bashrc"
 
 PATH_LINE='export PATH="$PATH:$HOME/bin"'
 
-# Fixed regex matching by replacing grep -qF with grep -qE
-#if grep -qE '(\$HOME|~)/bin' "$HOME/.bashrc" 2>/dev/null; then\
 if grep -qE '(\$HOME|~)/bin' "${HOME:-}/.bashrc" 2>/dev/null; then
     warn "~/bin already present in ~/.bashrc PATH — skipping."
 else
@@ -196,17 +214,33 @@ else
     info "Appended to ~/.bashrc: $PATH_LINE"
 fi
 
+# ── BASIC: Step 7 — bash completion in ~/.bashrc ──────────────────────────────
+heading "Updating bash completion in ~/.bashrc"
+
+BASH_COMPLETION_LINE='source ~/bin/pyVid2-bash-completion.sh'
+
+if grep -qF "$BASH_COMPLETION_LINE" "${HOME:-}/.bashrc" 2>/dev/null; then
+    warn "pyVid2-qt bash completion already sourced in ~/.bashrc — skipping."
+else
+    echo "" >> "$HOME/.bashrc"
+    echo "# pyVid2-qt bash completion script" >> "$HOME/.bashrc"
+    echo "$BASH_COMPLETION_LINE" >> "$HOME/.bashrc"
+    info "Appended pyVid2-qt bash completion source line to ~/.bashrc"
+fi
+
 # ── Done ───────────────────────────────────────────────────────────────────────
 echo
 echo -e "${BOLD}${GREEN}Basic install complete.${RESET}"
 echo
-echo -e "  Assets    → ${CYAN}$DATA_DIR${RESET}"
-echo -e "  Venv      → ${CYAN}$VENV_DIR${RESET}"
-echo -e "  Launcher  → ${CYAN}$LAUNCHER${RESET}"
+echo -e "  Assets     → ${CYAN}$DATA_DIR${RESET}"
+echo -e "  Venv       → ${CYAN}$VENV_DIR${RESET}"
+echo -e "  Launcher   → ${CYAN}$LAUNCHER${RESET}"
+echo -e "  Completion → ${CYAN}$BASH_COMPLETION_DST${RESET}"
 echo
 echo -e "  ${BOLD}To use pyVid immediately in this shell:${RESET}"
 echo -e "    ${CYAN}export PATH=\"\$PATH:\$HOME/bin\"${RESET}"
+echo -e "    ${CYAN}source ~/bin/pyVid2-bash-completion.sh${RESET}"
 echo -e "    ${CYAN}pyVid --Paths /your/videos [options]${RESET}"
 echo
-echo -e "  In new terminals the PATH will be set automatically via ~/.bashrc."
+echo -e "  In new terminals the PATH and pyVid2 bash completion will be set automatically via ~/.bashrc."
 echo
