@@ -211,18 +211,35 @@ def _configure(pref):
     return 'Unknown', available
 
 
-def setup_decoder(pref='auto'):
+def setup_decoder(pref='auto', rgb_fallback='software'):
     """
     Configure GStreamer decoder ranks based on the --decoder preference.
     See _configure() for the meaning of each preference.
+
+    rgb_fallback ('software' | 'nvdec', --rgbFallback): decoder for RGB-coded files when
+    VA-API has to sit out (see prepare_for_file()). Only matters with --decoder vaapi, where
+    NVDEC is otherwise disabled: 'nvdec' re-enables NVDEC for those files only.
 
     Returns:
         (active_label, probe_results)
         active_label  — display name of the decoder that will be used
         probe_results — list of (elem_name, label, category, rank)
     """
+    Gst, ok = _init_gst()
+    nv_orig = ([(f, f.get_rank()) for f in _video_decoders(Gst)['nvdec']] if ok else [])
     result = _configure(pref)
     _remember_eligible_va()
+    _va_state['pref'] = pref
+    _va_state['nv_ranks'] = []
+    if ok and rgb_fallback == 'nvdec' and pref == 'vaapi' and _va_state['ranks']:
+        # NVDEC decoders that --decoder vaapi disabled; re-enabled for RGB-coded files only
+        _va_state['nv_ranks'] = [(f, r) for f, r in nv_orig
+                                 if r > Gst.Rank.NONE and f.get_rank() == Gst.Rank.NONE]
+        if not _va_state['nv_ranks']:
+            print(f"{bc.Yellow_f}--rgbFallback nvdec: NVDEC not available — RGB-coded files "
+                  f"will be decoded in software{bc.RESET}")
+    elif rgb_fallback == 'nvdec' and pref != 'vaapi':
+        print(f"{bc.Yellow_f}--rgbFallback nvdec has no effect without --decoder vaapi{bc.RESET}")
     return result
 
 
@@ -236,7 +253,15 @@ def setup_decoder(pref='auto'):
 # are taken out of autoplugging; the next eligible decoder is used for that file (software
 # under --decoder vaapi, since NVDEC is already excluded there, so the NVIDIA GPU stays idle).
 
-_va_state = {'gst': None, 'ranks': [], 'excluded': False, 'discoverer': None}
+_va_state = {
+    'gst': None,
+    'ranks': [],        # (factory, configured rank) of VA decoders eligible after setup
+    'nv_ranks': [],     # (factory, original rank) of NVDEC decoders to enable for RGB files
+                        # (--decoder vaapi --rgbFallback nvdec only)
+    'pref': 'auto',
+    'excluded': False,  # True while the per-file RGB override is applied
+    'discoverer': None,
+}
 
 
 def _remember_eligible_va():
@@ -287,13 +312,13 @@ def prepare_for_file(path):
                  then load the file into a new QMediaPlayer: Qt's GStreamer pipeline keeps
                  the decoder list it was built with, so a rank change does not reach an
                  existing player.
-        note     short console tag (None otherwise), only when skipping VA-API changes
-                 the outcome, i.e. the file falls back to software decoding:
-                 "RGB-coded: VA-API skipped (wrong colours) → software"
-                 No note when NVDEC takes over (e.g. --decoder auto with an NVIDIA GPU):
-                 NVDEC would have decoded the file anyway and renders it correctly. VA-API
-                 is still excluded in that case, because NVDEC and VA-API share the same
-                 rank and only GStreamer's tie-breaking makes NVDEC win.
+        note     short console tag for RGB-coded files, None otherwise, e.g.
+                 "RGB-coded: VA-API skipped (wrong colours) → software"   (--decoder vaapi)
+                 "RGB-coded: VA-API skipped (wrong colours) → NVDEC"      (+ --rgbFallback nvdec)
+                 No note under --decoder auto when NVDEC takes over: NVDEC would have
+                 decoded the file anyway and renders it correctly. VA-API is still excluded
+                 then, because NVDEC and VA-API share the same rank and only GStreamer's
+                 tie-breaking makes NVDEC win.
     """
     Gst, ranks = _va_state['gst'], _va_state['ranks']
     if Gst is None or not ranks:
@@ -303,14 +328,21 @@ def prepare_for_file(path):
     if rgb and not _va_state['excluded']:
         for factory, _ in ranks:
             factory.set_rank(Gst.Rank.NONE)
+        for factory, rank in _va_state['nv_ranks']:      # --rgbFallback nvdec
+            factory.set_rank(rank)
         _va_state['excluded'] = True
     elif not rgb and _va_state['excluded']:
         for factory, rank in ranks:
             factory.set_rank(rank)
+        for factory, _ in _va_state['nv_ranks']:
+            factory.set_rank(Gst.Rank.NONE)
         _va_state['excluded'] = False
     note = None
-    if rgb and not _nvdec_eligible(Gst):
-        note = "RGB-coded: VA-API skipped (wrong colours) → software"
+    if rgb:
+        fallback = 'NVDEC' if _nvdec_eligible(Gst) else 'software'
+        # Under --decoder auto, NVDEC would have decoded the file anyway: nothing to report.
+        if not (_va_state['pref'] == 'auto' and fallback == 'NVDEC'):
+            note = f"RGB-coded: VA-API skipped (wrong colours) → {fallback}"
     return changed, note
 
 
@@ -346,8 +378,10 @@ def warn_if_decoder_ineffective(pref):
         print(f"{bc.Yellow_f}         Qt will choose the hardware decoder itself (CUDA/NVDEC first).{bc.RESET}\n")
 
 
-def print_startup_info(version, active_label, available):
+def print_startup_info(version, active_label, available, pref='auto'):
     """Print version banner and decoder status table to stdout."""
+    Gst, gst_ok = _init_gst()
+    rgb_only = {f.get_name() for f, _ in _va_state['nv_ranks']}
     B, R = bc.BOLD, bc.RESET
     sep = f"{bc.Blue_f}{'─' * 56}{R}"
 
@@ -368,6 +402,12 @@ def print_startup_info(version, active_label, available):
         elif category == 'software':
             tag   = f"{bc.Light_Blue_f}[fallback]{R}"
             lbl_s = f"{bc.Light_Blue_f}{label:<10}{R}"
+        elif elem_name in rgb_only:
+            tag   = f"{bc.Light_Yellow_f}[RGB-coded files only — --rgbFallback nvdec]{R}"
+            lbl_s = f"{bc.Light_Yellow_f}{label:<10}{R}"
+        elif gst_ok and Gst.ElementFactory.find(elem_name).get_rank() == Gst.Rank.NONE:
+            tag   = f"{bc.Dark_Gray_f}[disabled by --decoder {pref}]{R}"
+            lbl_s = f"{bc.Dark_Gray_f}{label:<10}{R}"
         else:
             tag   = f"{bc.Light_Yellow_f}[available]{R}"
             lbl_s = f"{bc.Light_Yellow_f}{label:<10}{R}"

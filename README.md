@@ -261,6 +261,7 @@ pyVid \
 | `--loopDelay` \<sec> | 1       | Delay in seconds between videos                              |
 | `--playSpeed` \<spd> | 2.0     | Playback speed multiplier 0.5 - 10.0 in 0.5 increments       |
 | `--decoder` \<dec>   | auto    | Hardware decoder: `auto` `nvdec` `vaapi` `software` |
+| `--rgbFallback` \<dec> | software | With `--decoder vaapi`: decoder for [RGB-coded videos](#hardware-decoder-selection), which VA-API renders with wrong colours: `software` or `nvdec` |
 | `--enableOSDcurpos`  | off     | Show always-visible playback position counter (upper-left). Toggle with `O` |
 | `--autoSpeed`        | off     | Honour `auto_speed` XMP tags embedded in video files. See [Auto Speed Tags](#per-video-playback-speed-auto-speed-tags) |
 
@@ -658,11 +659,15 @@ At startup, pyVid2-qt probes available GStreamer decoder elements and prints a s
 ```
 pyVid2-qt  version 0.95
 ────────────────────────────────────────────────────────
-  Decoder:  VA-API      vah265dec                       [active]
-            NVDEC       —                               [not available]
+  Decoder:  NVDEC       nvh265dec                       [disabled by --decoder vaapi]
+            VA-API      vah265dec                       [active]
             FFmpeg      avdec_h265                      [fallback]
 ────────────────────────────────────────────────────────
 ```
+
+Each decoder is shown as `[active]`, `[available]`, `[fallback]` (software), `[not available]`
+(not installed), `[disabled by --decoder …]`, or, with `--decoder vaapi --rgbFallback nvdec`,
+`[RGB-coded files only — --rgbFallback nvdec]`.
 
 | `--decoder` | Effect |
 |---|---|
@@ -677,12 +682,19 @@ The selection applies to every codec (HEVC, H.264, AV1, VP9, ...), not just HEVC
 directly in RGB rather than YUV (for example HEVC Range Extensions with pixel format `gbrp`,
 colour matrix `gbr`, as some slideshow and Ken Burns tools produce). Saturated colours come out
 blown out or washed out while greys look correct. pyVid2-qt checks each file before playback.
-For RGB-coded files only, VA-API is skipped and the next eligible decoder is used: software under
-`--decoder vaapi` (the NVIDIA GPU stays idle), or NVDEC under `auto` if present. When a file
-falls back to software, the console line for that file is tagged
-`[RGB-coded: VA-API skipped (wrong colours) → software]`. When NVDEC takes over there is no tag,
-because NVDEC would have decoded the file anyway and renders it correctly. Normal YUV files
-(4:2:0 and 4:4:4) are unaffected and still use VA-API.
+For RGB-coded files only, VA-API is skipped and another decoder is used. Normal YUV files (4:2:0
+and 4:4:4) are unaffected and still use VA-API.
+
+| Options | RGB-coded files decoded by | Console tag on that file's line |
+|---|---|---|
+| `--decoder vaapi` (`--rgbFallback software`, the default) | software (CPU); the NVIDIA GPU stays idle | `[RGB-coded: VA-API skipped (wrong colours) → software]` |
+| `--decoder vaapi --rgbFallback nvdec` | NVDEC, for those files only; normal files stay on VA-API | `[RGB-coded: VA-API skipped (wrong colours) → NVDEC]` |
+| `--decoder auto` | NVDEC if present, otherwise software | none with NVDEC (it would have decoded the file anyway); the software tag otherwise |
+
+With `--rgbFallback nvdec`, the NVIDIA GPU's VRAM is used only while an RGB-coded file plays and
+is released when the next normal file starts. The NVIDIA driver library stays loaded (and its
+device files open) until pyVid2-qt exits, but holds no VRAM. `--rgbFallback` has no effect
+without `--decoder vaapi`; pyVid2-qt says so at startup.
 
 Vulkan video decoders are not supported. GStreamer registers them at rank NONE, meaning they are
 not ready for automatic use, and pyVid2-qt leaves them disabled.

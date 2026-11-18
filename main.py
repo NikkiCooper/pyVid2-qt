@@ -99,8 +99,9 @@ def main():
     # Detect available decoders, configure GStreamer ranks, print startup banner
     from HWAccel import setup_decoder, print_startup_info, warn_if_decoder_ineffective
     decoder_pref = opts.decoder if opts else 'auto'
-    active_label, available = setup_decoder(decoder_pref)
-    print_startup_info(__version__, active_label, available)
+    rgb_fallback = opts.rgbFallback if opts else 'software'
+    active_label, available = setup_decoder(decoder_pref, rgb_fallback)
+    print_startup_info(__version__, active_label, available, decoder_pref)
     if decoder_pref != 'auto':
         warn_if_decoder_ineffective(decoder_pref)
 

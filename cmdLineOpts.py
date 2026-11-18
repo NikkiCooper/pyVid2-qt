@@ -34,6 +34,8 @@ def cmdLineOptions():
     video_group.add_argument("--noFilterLoop", action="store_true",                      help=chl.help["noFilterLoop"])
     video_group.add_argument("--decoder",   choices=['auto','nvdec','vaapi','software'],
                                             default='auto', metavar='DECODER',           help=chl.help["decoder"])
+    video_group.add_argument("--rgbFallback", choices=['software','nvdec'],
+                                            default='software', metavar='DECODER',       help=chl.help["rgbFallback"])
     video_group.add_argument("--shuffle",   action="store_true",                         help=chl.help["shuffle"])
     video_group.add_argument("--loopDelay", type=int,   default=1,                       help=chl.help["loopDelay"])
     video_group.add_argument("--playSpeed",       type=restricted_float_or_int, default=2.0,  help=chl.help["playSpeed"])

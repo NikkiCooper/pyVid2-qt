@@ -14,7 +14,7 @@ _pyv2_complete() {
 
     # Core argument groups
     local source_opts="--Paths --Files --loadPlayList --Glob"
-    local video_opts="--loop --noFilterLoop --decoder --shuffle --loopDelay --playSpeed --dispTitles --enableOSDcurpos --autoSpeed"
+    local video_opts="--loop --noFilterLoop --decoder --rgbFallback --shuffle --loopDelay --playSpeed --dispTitles --enableOSDcurpos --autoSpeed"
     local speed_tag_opts="--addAutoSpeed --delAutoSpeed --searchAutoSpeed --dryRun"
     local audio_opts="--mute --volume"
     local screenshot_opts="--sshotDir --useJPG"
@@ -72,6 +72,10 @@ _pyv2_complete() {
             ;;
         --decoder)
             COMPREPLY=( $(compgen -W "auto nvdec vaapi software" -- "$cur") )
+            return 0
+            ;;
+        --rgbFallback)
+            COMPREPLY=( $(compgen -W "software nvdec" -- "$cur") )
             return 0
             ;;
         --udp-port)

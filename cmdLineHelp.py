@@ -42,6 +42,10 @@ help = dict(
     decoder=(f"{bc.Light_Yellow_f}Hardware decoder to use.\n"
              f"{bc.Magenta_f}Choices: {bc.Green_f}auto  nvdec  vaapi  software\n"
              f"{bc.Magenta_f}Default: {bc.Green_f}auto{bc.RESET}"),
+    rgbFallback=(f"{bc.Light_Yellow_f}With {bc.Green_f}--decoder vaapi{bc.Light_Yellow_f}: decoder for RGB-coded videos (e.g. HEVC gbrp),\n"
+                 f"which VA-API renders with wrong colours. {bc.Green_f}nvdec{bc.Light_Yellow_f} uses the NVIDIA GPU for those files only.\n"
+                 f"{bc.Magenta_f}Choices: {bc.Green_f}software  nvdec\n"
+                 f"{bc.Magenta_f}Default: {bc.Green_f}software{bc.RESET}"),
     shuffle=f"{bc.Light_Yellow_f}Play videos in random order{bc.RESET}",
     loopDelay=f"{bc.Light_Yellow_f}The delay in seconds between each video.\n{bc.Magenta_f}Default:{bc.Green_f} 1{bc.Light_Yellow_f} sec{bc.Magenta_f} (recommended){bc.RESET}",
     playSpeed=f"{bc.Light_Yellow_f}Set playback speed ({bc.Green_f}0.5{bc.Light_Yellow_f} - {bc.Green_f}10.0{bc.Light_Yellow_f} in {bc.Green_f}0.5{bc.Light_Yellow_f} increments)\n{bc.Magenta_f}Default: {bc.Green_f}2.0{bc.RESET}",
