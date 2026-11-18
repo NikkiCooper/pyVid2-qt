@@ -4,6 +4,7 @@ __pycache__/
 .scratch
 .vscode
 .claude
+.venv
 DEVELOPMENT.md
 DualMonitorDesign.md
 pyvid2_diag.sh
