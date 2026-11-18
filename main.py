@@ -19,6 +19,15 @@ import ctypes
 # Explicitly set QT_QPA_PLATFORM=xcb, Whether it is already set or not and regardless of if it is set to wayland or not.
 os.environ['QT_QPA_PLATFORM'] = 'xcb'
 
+# Qt Multimedia backend: GStreamer.
+# --decoder (HWAccel.py) works by changing GStreamer decoder ranks, which only affects
+# playback on Qt's GStreamer backend. Qt's default FFmpeg backend ignores those ranks and
+# makes its own hardware choice (CUDA/NVDEC first), so --decoder vaapi would still decode on
+# an NVIDIA GPU. setdefault() so an explicit QT_MEDIA_BACKEND in the environment still wins.
+# Requires Qt's GStreamer media plugin (Arch: qt6-multimedia-gstreamer). The PyPI PySide6
+# wheels do not ship it; Qt then silently falls back to FFmpeg (HWAccel warns about this).
+os.environ.setdefault('QT_MEDIA_BACKEND', 'gstreamer')
+
 # Suppress Qt multimedia framework logging (codec/stream info on stderr)
 os.environ.setdefault('QT_LOGGING_RULES', 'qt.multimedia.*=false')
 
@@ -88,10 +97,12 @@ def main():
         sys.exit(0)
 
     # Detect available decoders, configure GStreamer ranks, print startup banner
-    from HWAccel import setup_decoder, print_startup_info
+    from HWAccel import setup_decoder, print_startup_info, warn_if_decoder_ineffective
     decoder_pref = opts.decoder if opts else 'auto'
     active_label, available = setup_decoder(decoder_pref)
     print_startup_info(__version__, active_label, available)
+    if decoder_pref != 'auto':
+        warn_if_decoder_ineffective(decoder_pref)
 
     # Pass Qt a display-stripped argv so it doesn't try to open X display "1"
     app = QApplication(_qt_argv())

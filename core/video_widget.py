@@ -40,23 +40,37 @@ class VideoWidget(QVideoWidget):
         # Set aspect ratio mode
         self.setAspectRatioMode(Qt.AspectRatioMode.IgnoreAspectRatio)
 
-        # Create media player
-        self.player = QMediaPlayer()
+        # Audio output and frame sink outlive the media player (see _new_player()), so
+        # volume / mute and the greyscale/screenshot frame path survive a player swap.
         self.audio_output = QAudioOutput()
-        self.player.setAudioOutput(self.audio_output)
 
         # Greyscale filter: player feeds _process_sink; we optionally modify
         # the NV12 UV (chroma) plane before pushing to the display sink.
         self._process_sink = QVideoSink(self)
-        self.player.setVideoOutput(self._process_sink)
         self._process_sink.videoFrameChanged.connect(self._on_frame_received)
         self._grayscale = False
 
-        # Connect media status changed signal
-        self.player.mediaStatusChanged.connect(self._on_media_status_changed)
+        # Create media player (wired to audio_output, _process_sink, status handler)
+        self.player = None
+        self._new_player()
 
         # Default playback rate
         self._speed = 2.0
+
+        # Playback-rate handling (Qt GStreamer backend). A rate change is a seek, and it is
+        # only safe on a pipeline that is actively playing the CURRENT source:
+        #   - On a pipeline at EndOfMedia (GStreamer stays in PlayingState there) it re-emits
+        #     a stale BufferedMedia + EndOfMedia that land on the next source and end it.
+        #   - On a stopped/ended/loading pipeline it is deferred and later executed as a seek
+        #     to the OLD position, so the next video starts part-way through (or ends at once
+        #     if it is shorter than the previous one).
+        #   - When a new source starts, the backend resets the rate to 1.0 without emitting
+        #     playbackRateChanged.
+        # So: set_speed() only stores the speed unless the current source is in
+        # BufferedMedia (see _can_set_rate()), and the stored speed is applied every time
+        # the current source reaches BufferedMedia.
+        self._rate_ready = False     # current source has reached BufferedMedia at least once
+        self._url = None
 
         # Loop state
         self.is_looping = False
@@ -111,13 +125,41 @@ class VideoWidget(QVideoWidget):
         img = self._last_frame.toImage()
         return img if not img.isNull() else None
 
+    def _new_player(self):
+        """
+        Create a fresh QMediaPlayer, replacing the current one.
+
+        Qt's GStreamer backend reuses its decoding pipeline across setSource() calls, and
+        that pipeline keeps the decoder list it was built with. GStreamer decoder rank
+        changes made later (HWAccel.prepare_for_file()) only reach a NEW player. So
+        load_file(new_player=True) is used when the eligible decoder set changes.
+        Callers must access self.player at call time, not keep a reference to it.
+        """
+        old = self.player
+        if old is not None:
+            old.mediaStatusChanged.disconnect(self._on_media_status_changed)
+            old.stop()
+            old.setAudioOutput(None)
+            old.setVideoOutput(None)
+            old.deleteLater()
+        self.player = QMediaPlayer()
+        self.player.setAudioOutput(self.audio_output)
+        self.player.setVideoOutput(self._process_sink)
+        self.player.mediaStatusChanged.connect(self._on_media_status_changed)
+
     # ── Media status ────────────────────────────────────────────────────────
 
     def _on_media_status_changed(self, status):
         """Handle media status changes"""
-        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+        if status == QMediaPlayer.MediaStatus.BufferedMedia:
+            # Current source is playing with a valid position: rate changes are safe now.
+            # Apply the stored speed (see the note in __init__).
+            if self.player.source() == self._url:
+                self._rate_ready = True
+                self._sync_rate()
+        elif status == QMediaPlayer.MediaStatus.EndOfMedia:
             if self.is_looping:
-                # Restart video from beginning
+                # Restart video from beginning; the rate is re-applied on BufferedMedia
                 self.player.setPosition(0)
                 self.player.play()
             else:
@@ -125,11 +167,20 @@ class VideoWidget(QVideoWidget):
 
     # ── Playback controls ───────────────────────────────────────────────────
 
-    def load_file(self, filepath):
-        """Load and play a video file"""
+    def load_file(self, filepath, new_player=False):
+        """
+        Load and play a video file.
+        new_player=True swaps in a fresh QMediaPlayer first, so GStreamer decoder rank
+        changes made since the current player was built take effect (see _new_player()).
+        """
         from PySide6.QtCore import QUrl
-        self.player.setSource(QUrl.fromLocalFile(filepath))
-        self.player.setPlaybackRate(self._speed)
+        if new_player:
+            self._new_player()
+        # No setPlaybackRate() here: the speed is applied once the new source reaches
+        # BufferedMedia (see the note in __init__).
+        self._rate_ready = False
+        self._url = QUrl.fromLocalFile(filepath)
+        self.player.setSource(self._url)
         self.player.play()
 
     def play(self):
@@ -154,7 +205,21 @@ class VideoWidget(QVideoWidget):
     def set_speed(self, speed):
         """Set playback speed (e.g., 2.0 for 2x)"""
         self._speed = speed
-        self.player.setPlaybackRate(speed)
+        # Between videos (ended, loading) only store it; it is applied on BufferedMedia.
+        # This is the --autoSpeed path: tag/restore speeds are set before load_file().
+        if self._can_set_rate():
+            self.player.setPlaybackRate(speed)
+
+    def _can_set_rate(self):
+        """True when a rate change is safe: the current source is playing, buffered."""
+        return (self._rate_ready
+                and self.player.mediaStatus() == QMediaPlayer.MediaStatus.BufferedMedia
+                and self.player.source() == self._url)
+
+    def _sync_rate(self):
+        """Apply self._speed to the player if its current rate differs."""
+        if self.player.playbackRate() != self._speed:
+            self.player.setPlaybackRate(self._speed)
 
     def seek(self, milliseconds):
         """

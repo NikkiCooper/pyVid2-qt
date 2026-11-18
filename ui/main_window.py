@@ -24,6 +24,7 @@ from PySide6.QtGui import QCursor, QPainter, QColor, QPen
 from IRRemoteControl import IRRemoteControl
 from ui.hud import HUD, CurPosOsd
 from core.video_widget import VideoWidget
+import HWAccel
 from SpeedTag import read_tag, tag_label, VALID_SPEEDS
 
 SPEED_STEPS = VALID_SPEEDS   # +/- key steps: 0.5 … 10.0
@@ -544,8 +545,14 @@ class MainWindow(QMainWindow):
         #position = f"[{self.current_index + 1}/{len(self.playlist)}]" if self.playlist else ""
         position = f'<span style="color:rgb(255,255,255)">{video_word}</span> <span style="color:rgb(0,210,0)">{self.current_index + 1}</span><span style="color:rgb(255,255,255)"> of</span> <span style="color:rgb(0,210,0)">{len(self.playlist)}</span><span style="color:rgb(255,255,255)">:</span>' if self.playlist else ''
 
+        # Per-file decoder fix-up. Runs before the console line so its note can go on that
+        # line, and must run before load_file() builds the pipeline: VA-API mis-renders
+        # RGB-coded video (e.g. HEVC 'gbrp'), so it sits out for those files.
+        decoders_changed, decoder_note = HWAccel.prepare_for_file(file_path)
+        note_s = f"  {bc.Yellow_f}[{decoder_note}]" if decoder_note else ""
+
         # Always print the filename being played
-        print(f"{bc.White_f}Playing {video_word.lower()} {bc.Light_Yellow_f}{self.current_index + 1}{bc.Green_f} of{bc.Light_Yellow_f} {len(self.playlist)}{bc.White_f}:{bc.Light_Blue_f} {_filename}{bc.RESET}")
+        print(f"{bc.White_f}Playing {video_word.lower()} {bc.Light_Yellow_f}{self.current_index + 1}{bc.Green_f} of{bc.Light_Yellow_f} {len(self.playlist)}{bc.White_f}:{bc.Light_Blue_f} {_filename}{note_s}{bc.RESET}")
 
         # Extended console output gated on --metadata
         if self.opts and self.opts.metadata:
@@ -558,7 +565,7 @@ class MainWindow(QMainWindow):
         self.hud.update_state(filename, self.current_index + 1,
                               len(self.playlist), self._speed, self._is_paused,
                               self._is_repeating)   # duration/position = 0 at load; poll fills them in
-        self.video_widget.load_file(file_path)
+        self.video_widget.load_file(file_path, new_player=decoders_changed)
 
     def play_next(self):
         if not self.playlist:

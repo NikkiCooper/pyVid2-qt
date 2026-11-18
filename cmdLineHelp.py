@@ -40,7 +40,7 @@ help = dict(
     noFilterLoop=f"{bc.Light_Yellow_f}With {bc.Green_f}--loop{bc.Light_Yellow_f}: do not loop the model sub-playlist ({bc.Green_f}F{bc.Light_Yellow_f});\n"
                  f"return to the master playlist when it ends.  No effect without {bc.Green_f}--loop{bc.RESET}",
     decoder=(f"{bc.Light_Yellow_f}Hardware decoder to use.\n"
-             f"{bc.Magenta_f}Choices: {bc.Green_f}auto  nvdec  vulkan  vaapi  software\n"
+             f"{bc.Magenta_f}Choices: {bc.Green_f}auto  nvdec  vaapi  software\n"
              f"{bc.Magenta_f}Default: {bc.Green_f}auto{bc.RESET}"),
     shuffle=f"{bc.Light_Yellow_f}Play videos in random order{bc.RESET}",
     loopDelay=f"{bc.Light_Yellow_f}The delay in seconds between each video.\n{bc.Magenta_f}Default:{bc.Green_f} 1{bc.Light_Yellow_f} sec{bc.Magenta_f} (recommended){bc.RESET}",

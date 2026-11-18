@@ -32,7 +32,7 @@ def cmdLineOptions():
     video_group = parser.add_argument_group(chl.group["video_group"])
     video_group.add_argument("--loop",      action="store_true",                         help=chl.help["loop"])
     video_group.add_argument("--noFilterLoop", action="store_true",                      help=chl.help["noFilterLoop"])
-    video_group.add_argument("--decoder",   choices=['auto','nvdec','vulkan','vaapi','software'],
+    video_group.add_argument("--decoder",   choices=['auto','nvdec','vaapi','software'],
                                             default='auto', metavar='DECODER',           help=chl.help["decoder"])
     video_group.add_argument("--shuffle",   action="store_true",                         help=chl.help["shuffle"])
     video_group.add_argument("--loopDelay", type=int,   default=1,                       help=chl.help["loopDelay"])
