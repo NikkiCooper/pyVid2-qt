@@ -31,36 +31,76 @@ Designed for unattended or kiosk-style playback — shuffle, loop, variable spee
 
 ## Requirements
 
-> **Platform note:** pyVid2-qt should run on most modern Linux distributions but has only been
-> tested on Arch Linux. Package names will vary by distribution; `pacman` package names below
-> serve as a reference point for finding equivalents on your system.
+> **Platform:** pyVid2-qt is developed and tested on **Arch Linux**, which is the supported
+> platform. The BASIC installer is Arch-only: it checks your system's packages with `pacman`.
+> Other distributions can use the ADVANCED install (see [Installation](#installation)), but that
+> setup is unsupported.
 
-> **Installer note:** The BASIC installer (`install.sh`) does **not** install or configure
-> hardware acceleration, CUDA, or OpenCV. These must already be installed and working system-wide
-> before running the installer if hardware-accelerated decoding is desired.
+> **Hardware drivers are not installed for you.** Neither installer mode installs GPU drivers,
+> VA-API drivers, CUDA or OpenCV. If you want hardware-accelerated decoding, they must already be
+> installed and working system-wide (see [VA-API](#va-api-hardware-decoding-intel--amd) and
+> [NVDEC](#nvdec-hardware-decoding-nvidia--cuda) below).
 
 > X11 or XWayland is required. Native Wayland is not supported.
 
-### Base system packages
+### What pyVid2-qt needs at runtime
 
-Install these before running the installer:
+| Component | Why it is needed | Arch package(s) |
+|---|---|---|
+| **Python 3.10+** (system Python) | Runs the application | `python` |
+| **PySide6** | Python bindings for Qt 6 | `pyside6` |
+| **Qt 6 QtMultimedia** | All video and audio playback | `qt6-multimedia` (**not** pulled in by `pyside6`; see below) |
+| **Qt 6 GStreamer media backend** | The playback engine pyVid2-qt uses; required for `--decoder` | `qt6-multimedia-gstreamer` |
+| **GStreamer 1.0** + plugins | Demuxing and decoding | `gst-plugins-good`, `gst-libav` (both required); `gst-plugins-bad`, `gst-plugins-ugly` (recommended, extra formats) |
+| **GStreamer VA-API plugin** | VA-API hardware decoding (Intel / AMD), `--decoder vaapi` | `gst-plugin-va` (recommended) |
+| **python-gobject** | GStreamer Python bindings: decoder detection and `--decoder` selection | `python-gobject` |
+| **python-magic** | Identifies video files by MIME type | `python-magic` |
+| **exiftool** | Speed-tag operations only (`--addAutoSpeed`, `--delAutoSpeed`, `--searchAutoSpeed`, `--autoSpeed`) | `perl-image-exiftool` (recommended) |
+
+The rest of what Qt and GStreamer need is pulled in automatically by the packages above. That
+includes Qt's X11/XCB libraries (`xcb-util-cursor`, `libxkbcommon-x11`), audio (`libpulse`,
+`pipewire`), `libmagic` (`file`), the H.264/HEVC parsers, and the NVDEC decoders
+(`gst-plugins-bad-libs`).
+
+### Arch Linux packages
+
+Install everything, required and recommended, with:
 
 ```bash
-# Arch Linux / Manjaro
-sudo pacman -S python gst-plugins-good gst-plugins-bad gst-plugins-ugly \
-               gst-libav gstreamer-vaapi python-gobject perl-image-exiftool
+sudo pacman -S --needed python pyside6 qt6-multimedia qt6-multimedia-gstreamer \
+               python-gobject python-magic gst-plugins-good gst-libav \
+               gst-plugin-va gst-plugins-bad gst-plugins-ugly perl-image-exiftool
 ```
 
-- **Python 3.10+**
-- **GStreamer 1.0** with `gst-plugins-good`, `gst-plugins-bad`, `gst-plugins-ugly`, `gst-libav`
-- **gstreamer-vaapi** — VA-API hardware decoding (Intel / AMD); see below
-- **python-gobject** — GStreamer Python bindings
-- **exiftool** (`perl-image-exiftool`) — required only for speed-tag operations
+The BASIC installer checks for all of these. If anything is missing, it prints the exact
+`pacman` command and stops before installing anything.
+
+Things worth knowing:
+
+- **The Arch `pyside6` package does not pull in QtMultimedia.** It lists `qt6-multimedia` only as
+  an *optional* dependency, so it must be named explicitly. Without it, pyVid2-qt fails at
+  startup with `ModuleNotFoundError: No module named 'PySide6.QtMultimedia'`.
+- **The GStreamer backend is required, not optional.** `main.py` sets
+  `QT_MEDIA_BACKEND=gstreamer`; an explicit `QT_MEDIA_BACKEND` in your environment still wins.
+  `--decoder` works by ranking GStreamer decoder elements. Qt's other backend, FFmpeg
+  (`qt6-multimedia-ffmpeg`), ignores those ranks and makes its own hardware choice (CUDA/NVDEC
+  first), so on a machine with an NVIDIA GPU it would always decode there, even with
+  `--decoder vaapi`. If the GStreamer backend is unavailable, pyVid2-qt prints a warning at
+  startup when `--decoder` is set.
+- **Do not use PySide6 from pip.** The PyPI PySide6 wheels bundle their own Qt 6 with only the
+  FFmpeg backend, so `--decoder`, VA-API, and the RGB-video colour fix
+  ([Hardware Decoder Selection](#hardware-decoder-selection)) do not work with them. The BASIC
+  launcher runs Python with `-s` so that a `pip install --user PySide6` in `~/.local` cannot
+  shadow the Arch package.
+- The older `gstreamer-vaapi` package is no longer in the Arch repositories. `gst-plugin-va`
+  replaces it.
 
 ### VA-API hardware decoding (Intel / AMD)
 
-`gstreamer-vaapi` (listed above) provides the GStreamer side. You also need a vendor-supplied
-VA-API driver:
+VA-API is a vendor-neutral Linux video API used by both Intel and AMD GPUs; `--decoder vaapi`
+selects it on either. (NVIDIA uses NVDEC instead; see below.) `gst-plugin-va` provides the
+GStreamer VA-API decoders (`vah265dec`, `vah264dec`, ...). You also need the VA-API driver for
+your GPU:
 
 ```bash
 # Intel — Broadwell (5th gen) and later
@@ -69,15 +109,20 @@ sudo pacman -S intel-media-driver libva
 # Intel — Haswell (4th gen) and earlier
 sudo pacman -S libva-intel-driver libva
 
-# AMD — Mesa driver (covers the vast majority of AMD GPUs)
-sudo pacman -S libva-mesa-driver libva
+# AMD — Mesa's radeonsi VA-API driver. It is part of the 'mesa' package, which already
+# replaced the former separate 'libva-mesa-driver' package.
+sudo pacman -S mesa libva
 ```
+
+On systems with an Intel GPU, `--decoder vaapi` sets `LIBVA_DRIVER_NAME=iHD` (unless you set it
+yourself), so `libva-nvidia-driver`, if installed, cannot claim the NVIDIA GPU. On AMD-only
+systems nothing is forced and libva picks `radeonsi` automatically.
 
 ### NVDEC hardware decoding (NVIDIA / CUDA)
 
-The `nvdec` GStreamer plugin is included in `gst-plugins-bad` but will only activate when CUDA
-is present at runtime. A working NVIDIA driver and the CUDA toolkit must both be installed
-system-wide:
+The NVDEC GStreamer decoders (`nvh265dec`, `nvh264dec`, ...) are in `gst-plugins-bad-libs`
+(pulled in automatically) but only activate when CUDA is present at runtime. A working NVIDIA
+driver and the CUDA toolkit must both be installed system-wide:
 
 ```bash
 # NVIDIA driver — choose one
@@ -100,29 +145,12 @@ pacman will automatically pull in all required dependencies:
 `fmt`, `glew`, `hdf5`, `jsoncpp`, `opencv-cuda`, `openmpi`, `pugixml`, `python-numpy`,
 `qt6-base`, `vtk`
 
-> Advanced users: you know what you need to do.
-
-### Vulkan hardware decoding
-
-The Vulkan video decoder is part of `gst-plugins-bad` and activates automatically when a
-Vulkan-capable driver is present:
-
-```bash
-# AMD (Mesa Vulkan driver)
-sudo pacman -S vulkan-radeon vulkan-icd-loader
-
-# Intel
-sudo pacman -S vulkan-intel vulkan-icd-loader
-
-# NVIDIA — Vulkan support is bundled with nvidia-utils, which is pulled in by the
-# driver packages above; no additional packages are required.
-```
-
 ---
 
 ## Installation
 
-Clone the repository, then run the installer:
+Install the [Arch Linux packages](#arch-linux-packages) first. Then clone the repository and run
+the installer:
 
 ```bash
 git clone https://github.com/NikkiCooper/pyVid2-qt.git
@@ -134,13 +162,20 @@ The installer asks you to choose a mode:
 
 ### BASIC
 
-Recommended for most users.
+Recommended, and the supported setup on Arch Linux. pyVid2-qt runs on the system Python and
+Arch's own PySide6 / Qt 6 / GStreamer packages. There is no virtual environment and no pip, so
+nothing is downloaded and a `pacman -Syu` that upgrades Python or Qt keeps working.
 
-1. Creates `~/.local/share/pyVid2-qt` and copies fonts and icons from `ASSETS/`
-2. Creates a Python virtual environment at `.venv/` inside the project directory
-3. Installs Python dependencies (`PySide6`, `python-magic`) into the venv
-4. Creates `~/bin/pyVid` — a launcher script that activates the venv and runs the player
-5. Appends `export PATH="$PATH:$HOME/bin"` to `~/.bashrc`
+1. Checks that the required Arch packages are installed (and reports missing recommended ones).
+   If anything required is missing, it prints the `pacman` command and stops before installing
+   anything.
+2. Verifies that the system Python can load them. It checks that PySide6 is the Arch package,
+   that QtMultimedia and Qt's GStreamer backend are present, and that the GStreamer bindings and
+   python-magic load.
+3. Creates `~/.local/share/pyVid2-qt` and copies fonts and icons from `ASSETS/`.
+4. Creates `~/bin/pyVid`, a launcher that runs `/usr/bin/python3 -s main.py`.
+5. Installs `~/bin/pyVid2-bash-completion.sh` and sources it from `~/.bashrc`.
+6. Appends `export PATH="$PATH:$HOME/bin"` to `~/.bashrc`.
 
 After installation, open a new terminal and run:
 
@@ -155,13 +190,24 @@ export PATH="$PATH:$HOME/bin"
 pyVid --Paths /path/to/videos [options]
 ```
 
+> **Upgrading from an earlier version:** earlier installers created a virtual environment at
+> `.venv/` in the project directory, with pip PySide6. The launcher no longer uses it. The
+> installer offers to remove it, and the default is to keep it, in case an IDE such as PyCharm
+> uses it as its project interpreter. Re-run `./install.sh` and choose BASIC to replace the old
+> launcher.
+
 ### ADVANCED
 
-For users who manage their own Python environment (system Python, conda, pipx, etc.).
+Unsupported. For setups the BASIC installer cannot handle, such as other Linux distributions or
+a hand-managed Python environment. On Arch Linux, BASIC should cover every normal case.
 
-1. Creates `~/.local/share/pyVid2-qt` and copies fonts and icons from `ASSETS/`
+1. Creates `~/.local/share/pyVid2-qt` and copies fonts and icons from `ASSETS/`.
 
-Python dependencies, virtual environment, and PATH are left entirely to you. Run the program directly:
+Everything else is up to you. You must provide the equivalents of the
+[runtime requirements](#what-pyvid2-qt-needs-at-runtime): Qt 6 **with QtMultimedia and its
+GStreamer backend**, PySide6 built against that Qt, GStreamer with the plugins above,
+python-gobject, and python-magic. In practice that means your distribution's Qt and PySide6
+packages, not pip, because the pip wheels have no GStreamer backend. Run the program directly:
 
 ```bash
 python /path/to/pyVid2-qt/main.py --Paths /path/to/videos [options]
@@ -213,7 +259,7 @@ pyVid \
 | `--shuffle`          | off     | Play videos in random order                                  |
 | `--loopDelay` \<sec> | 1       | Delay in seconds between videos                              |
 | `--playSpeed` \<spd> | 2.0     | Playback speed multiplier 0.5 - 10.0 in 0.5 increments       |
-| `--decoder` \<dec>   | auto    | Hardware decoder: `auto` `nvdec` `vulkan` `vaapi` `software` |
+| `--decoder` \<dec>   | auto    | Hardware decoder: `auto` `nvdec` `vaapi` `software` |
 | `--enableOSDcurpos`  | off     | Show always-visible playback position counter (upper-left). Toggle with `O` |
 | `--autoSpeed`        | off     | Honour `auto_speed` XMP tags embedded in video files         |
 
@@ -500,14 +546,38 @@ At startup, pyVid2-qt probes available GStreamer decoder elements and prints a s
 ```
 pyVid2-qt  version 0.95
 ────────────────────────────────────────────────────────
-  Decoder:  VA-API      vah264dec                       [active]
+  Decoder:  VA-API      vah265dec                       [active]
             NVDEC       —                               [not available]
-            Vulkan      —                               [not available]
-            FFmpeg      avdec_h264                      [fallback]
+            FFmpeg      avdec_h265                      [fallback]
 ────────────────────────────────────────────────────────
 ```
 
-Use `--decoder auto` (default) to let GStreamer pick the highest-ranked available decoder, or force a specific backend with `--decoder vaapi`, `--decoder nvdec`, etc.
+| `--decoder` | Effect |
+|---|---|
+| `auto` (default) | GStreamer's own ranking decides. On systems with both NVIDIA and Intel/AMD GPUs this is usually NVDEC. |
+| `nvdec` | Only NVIDIA NVDEC decoders are eligible (software decoding remains as fallback). |
+| `vaapi` | Only VA-API decoders on non-NVIDIA GPUs are eligible (software decoding remains as fallback). VA-API devices backed by `libva-nvidia-driver` are excluded. When an Intel GPU is present and `LIBVA_DRIVER_NAME` is unset, it is set to `iHD`. The NVIDIA GPU is not used at all: no CUDA context, no VRAM. |
+| `software` | All hardware decoders are disabled; FFmpeg (`avdec_*`) decodes on the CPU. |
+
+The selection applies to every codec (HEVC, H.264, AV1, VP9, ...), not just HEVC.
+
+**RGB-coded video and VA-API:** GStreamer's VA-API decoders mis-render video that is coded
+directly in RGB rather than YUV (for example HEVC Range Extensions with pixel format `gbrp`,
+colour matrix `gbr`, as some slideshow and Ken Burns tools produce). Saturated colours come out
+blown out or washed out while greys look correct. pyVid2-qt checks each file before playback.
+For RGB-coded files only, VA-API is skipped and the next eligible decoder is used: software under
+`--decoder vaapi` (the NVIDIA GPU stays idle), or NVDEC under `auto` if present. When a file
+falls back to software, the console line for that file is tagged
+`[RGB-coded: VA-API skipped (wrong colours) → software]`. When NVDEC takes over there is no tag,
+because NVDEC would have decoded the file anyway and renders it correctly. Normal YUV files
+(4:2:0 and 4:4:4) are unaffected and still use VA-API.
+
+Vulkan video decoders are not supported. GStreamer registers them at rank NONE, meaning they are
+not ready for automatic use, and pyVid2-qt leaves them disabled.
+
+`--decoder` only takes effect on Qt's GStreamer backend (see
+[Arch Linux packages](#arch-linux-packages)). If that backend is not available, pyVid2-qt prints a
+warning at startup and Qt chooses the decoder itself.
 
 ---
 
