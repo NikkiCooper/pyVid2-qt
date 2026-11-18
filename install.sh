@@ -5,6 +5,10 @@
 #
 #   Usage:  bash install.sh
 #
+#   BASIC mode runs pyVid2-qt on Arch Linux's own packages (system Python, Arch PySide6 /
+#   Qt 6 / GStreamer). No virtual environment and no pip: the PyPI PySide6 wheels lack
+#   Qt's GStreamer media backend, without which --decoder (e.g. VA-API) has no effect.
+#
 
 # Strict developer mode enabled safely
 #set -euo pipefail
@@ -16,10 +20,34 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ASSETS_DIR="$SCRIPT_DIR/ASSETS"
 DATA_DIR="$HOME/.local/share/pyVid2-qt"
 BIN_DIR="$HOME/bin"
-VENV_DIR="$SCRIPT_DIR/.venv"
+OLD_VENV_DIR="$SCRIPT_DIR/.venv"          # created by earlier versions of this installer
 LAUNCHER="$BIN_DIR/pyVid"
 BASH_COMPLETION_SRC="$ASSETS_DIR/pyVid2-bash-completion.sh"
 BASH_COMPLETION_DST="$BIN_DIR/pyVid2-bash-completion.sh"
+
+# System Python. '-s' keeps ~/.local user site-packages (e.g. a stray
+# 'pip install --user PySide6') from shadowing the Arch packages.
+PYTHON="/usr/bin/python3"
+PYTHON_FLAGS="-s"
+
+# ── Arch packages ──────────────────────────────────────────────────────────────
+# Required: pyVid2-qt does not run correctly without these.
+#   qt6-multimedia            QtMultimedia (the Arch pyside6 package lists it only as OPTIONAL)
+#   qt6-multimedia-gstreamer  Qt's GStreamer media backend (used by main.py; --decoder needs it)
+#   python-gobject            GStreamer Python bindings (decoder detection / selection)
+#   gst-plugins-good          MP4/Matroska demuxers;  gst-libav: software decoders
+# Everything else Qt/GStreamer needs (xcb-util-cursor, libpulse, pipewire, libmagic, the
+# H.264/HEVC parsers and NVDEC in gst-plugins-bad-libs, ...) is pulled in by these.
+REQUIRED_PKGS=(python pyside6 qt6-multimedia qt6-multimedia-gstreamer
+               python-gobject python-magic gst-plugins-good gst-libav)
+
+# Recommended: specific features degrade without these.
+declare -A RECOMMENDED_PKGS=(
+    [gst-plugin-va]="VA-API hardware decoding (Intel / AMD) — --decoder vaapi"
+    [gst-plugins-bad]="additional formats and codecs"
+    [gst-plugins-ugly]="additional formats and codecs"
+    [perl-image-exiftool]="speed-tag operations (--addAutoSpeed, --autoSpeed, ...)"
+)
 
 # ── Colours ────────────────────────────────────────────────────────────────────
 BOLD='\033[1m'
@@ -44,33 +72,30 @@ echo -e "${BOLD}${CYAN}╚══════════════════
 echo
 
 # inform about the necessary dependencies
-echo -e "${BOLD} REQUIREMENTS${RESET}"
+echo -e "${BOLD} REQUIREMENTS (BASIC — Arch Linux packages)${RESET}"
 echo
-echo -e "      ${BOLD}${CYAN}• Python 3.10+${RESET}"
-echo -e "      ${BOLD}${CYAN}• GStreamer 1.0${RESET}${DIM}   — With gst-plugins-good, gst-plugins-bad, gst-plugins-ugly, gst-libav${RESET}"
-echo -e "      ${BOLD}${CYAN}• gstreamer-vaapi${RESET}${DIM} — For VA-API hardware decoding (Intel / AMD)${RESET}"
-echo -e "      ${BOLD}${CYAN}• python-gobject${RESET}${DIM} — GStreamer Python bindings${RESET}"
-echo -e "      ${BOLD}${CYAN}• exiftool${RESET}${DIM}        — required only for speed-tag operations${RESET}"
+echo -e "      ${BOLD}${CYAN}• Required${RESET}${DIM}    — ${REQUIRED_PKGS[*]}${RESET}"
+echo -e "      ${BOLD}${CYAN}• Recommended${RESET}${DIM} — ${!RECOMMENDED_PKGS[*]}${RESET}"
 echo
-echo -e "${BOLD}${YELLOW}These must be already installed prior to running this script${RESET}"
+echo -e "${BOLD}${YELLOW}The installer checks for these and prints the pacman command for anything missing.${RESET}"
+echo -e "${BOLD}${YELLOW}Hardware drivers (intel-media-driver, libva-mesa-driver, nvidia) are not checked.${RESET}"
 echo
 
 # ── Installation mode selection ────────────────────────────────────────────────
 echo -e "${BOLD}Choose an installation mode:${RESET}"
 echo
-echo -e "  ${BOLD}[B] BASIC${RESET}"
+echo -e "  ${BOLD}[B] BASIC${RESET}  ${DIM}(Arch Linux — recommended)${RESET}"
+echo -e "      ${DIM}• Checks that the required Arch packages are installed and importable${RESET}"
 echo -e "      ${DIM}• Creates ~/.local/share/pyVid2-qt and installs fonts and icons${RESET}"
-echo -e "      ${DIM}• Creates a Python virtual environment inside the project directory${RESET}"
-echo -e "      ${DIM}• Installs Python dependencies (PySide6, python-magic) into the venv${RESET}"
-echo -e "      ${DIM}• Creates ~/bin/pyVid — a launcher script that activates the venv${RESET}"
-echo -e "        and runs pyVid2-qt; adds ~/bin to PATH in ~/.bashrc${RESET}"
+echo -e "      ${DIM}• Creates ~/bin/pyVid — a launcher that runs pyVid2-qt with the system Python${RESET}"
+echo -e "      ${DIM}  (no virtual environment, no pip); adds ~/bin to PATH in ~/.bashrc${RESET}"
 echo -e "      ${DIM}• Installs ~/bin/pyVid2-bash-completion.sh and sources it from ~/.bashrc${RESET}"
 echo
 echo -e "        ${BOLD}  After install: run 'pyVid --Paths /your/videos [options]'${RESET}"
 echo
-echo -e "  ${BOLD}[A] ADVANCED${RESET}"
+echo -e "  ${BOLD}[A] ADVANCED${RESET}  ${DIM}(other distributions / custom environments — unsupported)${RESET}"
 echo -e "      ${DIM}• Creates ~/.local/share/pyVid2-qt and installs fonts and icons only${RESET}"
-echo -e "      ${DIM}• Python environment, dependencies, PATH, and shell completion are managed by you${RESET}"
+echo -e "      ${DIM}• Qt 6, PySide6, GStreamer, Python environment, PATH, and shell completion are managed by you${RESET}"
 echo
 echo -e "        ${BOLD}  After install: run 'python ${SCRIPT_DIR}/main.py --Paths /your/videos [options]'${RESET}"
 echo
@@ -87,7 +112,94 @@ case "${MODE^^}" in
     *)    echo "Aborted."; exit 0 ;;
 esac
 
-# ── Step 1: Install assets (both modes) ───────────────────────────────────────
+# ── BASIC: Step 1 — check Arch packages (before anything is installed) ────────
+if [[ "${MODE^^}" == "B" ]]; then
+    heading "Checking Arch Linux packages"
+
+    if ! command -v pacman &>/dev/null; then
+        error "pacman not found. BASIC mode requires Arch Linux (or an Arch-based distribution)."
+        error "On other distributions use ADVANCED mode and install the equivalents yourself."
+        exit 1
+    fi
+
+    MISSING_REQ=()
+    for pkg in "${REQUIRED_PKGS[@]}"; do
+        if pacman -Q "$pkg" &>/dev/null; then
+            info "$pkg"
+        else
+            echo -e "  ${RED}✗${RESET}  $pkg  ${DIM}(required)${RESET}"
+            MISSING_REQ+=("$pkg")
+        fi
+    done
+
+    MISSING_REC=()
+    for pkg in "${!RECOMMENDED_PKGS[@]}"; do
+        if pacman -Q "$pkg" &>/dev/null; then
+            info "$pkg"
+        else
+            warn "$pkg  ${DIM}(recommended — ${RECOMMENDED_PKGS[$pkg]})${RESET}"
+            MISSING_REC+=("$pkg")
+        fi
+    done
+
+    if (( ${#MISSING_REQ[@]} > 0 )); then
+        echo
+        error "Required packages are missing. Install them and re-run the installer:"
+        echo
+        echo -e "    ${CYAN}sudo pacman -S --needed ${MISSING_REQ[*]} ${MISSING_REC[*]}${RESET}"
+        echo
+        exit 1
+    fi
+
+    if (( ${#MISSING_REC[@]} > 0 )); then
+        echo
+        warn "Recommended packages are missing; the features listed above will be unavailable."
+        warn "To install them:  ${CYAN}sudo pacman -S --needed ${MISSING_REC[*]}${RESET}"
+    fi
+
+    # ── BASIC: Step 2 — verify the system Python can actually use them ────────
+    heading "Verifying system Python modules"
+
+    if [[ ! -x "$PYTHON" ]]; then
+        error "$PYTHON not found. Install it and re-run:  sudo pacman -S python"
+        exit 1
+    fi
+    info "Python: $PYTHON  ($("$PYTHON" --version 2>&1))"
+
+    # Each check: label | python code that exits non-zero / raises on failure | fix hint
+    CHECKS=(
+        "PySide6 (Arch package)|import PySide6, sys; sys.exit(0 if PySide6.__file__.startswith('/usr/lib/') else 1)|the PySide6 found is not the Arch package; remove any pip-installed PySide6 and run: sudo pacman -S pyside6"
+        "QtMultimedia|from PySide6 import QtMultimedia, QtMultimediaWidgets|sudo pacman -S qt6-multimedia"
+        "Qt GStreamer media backend|import os, sys; from PySide6.QtCore import QLibraryInfo as L; sys.exit(0 if os.path.isfile(os.path.join(L.path(L.LibraryPath.PluginsPath), 'multimedia', 'libgstreamermediaplugin.so')) else 1)|sudo pacman -S qt6-multimedia-gstreamer"
+        "GStreamer Python bindings|import gi; gi.require_version('Gst', '1.0'); from gi.repository import Gst; Gst.init(None)|sudo pacman -S python-gobject gstreamer"
+        "python-magic|import magic; magic.Magic(mime=True)|sudo pacman -S python-magic"
+    )
+
+    FAILED=0
+    for check in "${CHECKS[@]}"; do
+        IFS='|' read -r label code hint <<< "$check"
+        if "$PYTHON" $PYTHON_FLAGS -c "$code" &>/dev/null; then
+            info "$label"
+        else
+            echo -e "  ${RED}✗${RESET}  $label"
+            error "  Fix: $hint"
+            FAILED=1
+        fi
+    done
+
+    if (( FAILED )); then
+        FOUND="$("$PYTHON" $PYTHON_FLAGS -c 'import PySide6; print(PySide6.__file__)' 2>/dev/null)"
+        [[ -n "$FOUND" ]] && warn "PySide6 currently loads from: $FOUND"
+        echo
+        error "System Python cannot load everything pyVid2-qt needs. Fix the items above and re-run."
+        exit 1
+    fi
+
+    info "GStreamer: $("$PYTHON" $PYTHON_FLAGS -c "import gi; gi.require_version('Gst', '1.0'); from gi.repository import Gst; Gst.init(None); print(Gst.version_string())" 2>/dev/null)"
+    info "PySide6:   $("$PYTHON" $PYTHON_FLAGS -c "import PySide6; print(PySide6.__version__, '—', PySide6.__file__.rsplit('/', 2)[0])" 2>/dev/null)"
+fi
+
+# ── Install assets (both modes) ────────────────────────────────────────────────
 heading "Installing assets to $DATA_DIR"
 
 install -d "$DATA_DIR/fonts"
@@ -113,7 +225,8 @@ if [[ "${MODE^^}" == "A" ]]; then
     echo -e "${BOLD}${GREEN}Advanced install complete.${RESET}"
     echo
     echo -e "  Assets are installed to ${CYAN}$DATA_DIR${RESET}"
-    echo -e "  Manage your Python environment and run:"
+    echo -e "  Provide Qt 6 + QtMultimedia with its GStreamer backend, PySide6, GStreamer,"
+    echo -e "  python-gobject and python-magic (see README.md, Requirements), then run:"
     echo -e "  ${CYAN}python $SCRIPT_DIR/main.py --Paths /your/videos [options]${RESET}"
     echo
     echo -e "  Bash completion is available at:"
@@ -124,53 +237,19 @@ if [[ "${MODE^^}" == "A" ]]; then
     exit 0
 fi
 
-# ── BASIC: Step 2 — virtual environment ───────────────────────────────────────
-heading "Creating virtual environment"
-
-# Find a suitable Python (3.10+)
-PYTHON=""
-for candidate in python3.14 python3.13 python3.12 python3.11 python3.10 python3; do
-    if command -v "$candidate" &>/dev/null; then
-        if "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3,10) else 1)' 2>/dev/null; then
-            PYTHON="$candidate"
-            break
-        fi
-    fi
-done
-
-if [[ -z "$PYTHON" ]]; then
-    error "Python 3.10 or newer not found. Install Python and re-run."
-    exit 1
-fi
-
-info "Using Python: $(command -v "$PYTHON")  ($("$PYTHON" --version))"
-
-if [[ -d "$VENV_DIR" ]]; then
-    warn "Existing virtual environment found at $VENV_DIR — removing and recreating."
-    rm -rf "$VENV_DIR"
-fi
-
-"$PYTHON" -m venv "$VENV_DIR"
-info "Virtual environment created at $VENV_DIR"
-
-# ── BASIC: Step 3 — pip dependencies ──────────────────────────────────────────
-heading "Installing Python dependencies"
-
-"$VENV_DIR/bin/pip" install --upgrade pip --quiet
-info "pip upgraded"
-
-DEPS=(PySide6 python-magic)
-
-for dep in "${DEPS[@]}"; do
-    echo -n "  Installing ${dep}... "
-    if "$VENV_DIR/bin/pip" install "$dep" --quiet; then
-        echo -e "${GREEN}done${RESET}"
+# ── BASIC: Step 3 — old virtual environment from earlier installers ───────────
+if [[ -d "$OLD_VENV_DIR" ]]; then
+    heading "Old virtual environment found"
+    warn "$OLD_VENV_DIR exists. pyVid2-qt no longer uses it (BASIC now runs on the system Python)."
+    warn "If an IDE (e.g. PyCharm) uses it as its project interpreter, keep it."
+    read -rp "  Remove $OLD_VENV_DIR? [y/N]: " RM_VENV
+    if [[ "${RM_VENV,,}" == "y" ]]; then
+        rm -rf "$OLD_VENV_DIR"
+        info "Removed $OLD_VENV_DIR"
     else
-        echo -e "${RED}FAILED${RESET}"
-        error "Failed to install $dep. Check your internet connection and try again."
-        exit 1
+        info "Kept $OLD_VENV_DIR (unused by pyVid)"
     fi
-done
+fi
 
 # ── BASIC: Step 4 — launcher script ───────────────────────────────────────────
 heading "Creating launcher: $LAUNCHER"
@@ -180,10 +259,11 @@ install -d "$BIN_DIR"
 command cat > "$LAUNCHER" <<LAUNCHER_EOF
 #!/usr/bin/env bash
 #  pyVid — pyVid2-qt launcher (generated by install.sh)
-#  Activates the project virtual environment and runs pyVid2-qt.
+#  Runs pyVid2-qt with the Arch system Python and system packages (PySide6 / Qt 6 /
+#  GStreamer). '${PYTHON_FLAGS}' ignores ~/.local user site-packages so a pip-installed
+#  PySide6 cannot shadow the Arch one.
 PROJ="${SCRIPT_DIR}"
-source "\${PROJ}/.venv/bin/activate"
-exec python "\${PROJ}/main.py" "\$@"
+exec ${PYTHON} ${PYTHON_FLAGS} "\${PROJ}/main.py" "\$@"
 LAUNCHER_EOF
 
 chmod +x "$LAUNCHER"
@@ -233,7 +313,7 @@ echo
 echo -e "${BOLD}${GREEN}Basic install complete.${RESET}"
 echo
 echo -e "  Assets     → ${CYAN}$DATA_DIR${RESET}"
-echo -e "  Venv       → ${CYAN}$VENV_DIR${RESET}"
+echo -e "  Python     → ${CYAN}$PYTHON $PYTHON_FLAGS${RESET}  (system packages)"
 echo -e "  Launcher   → ${CYAN}$LAUNCHER${RESET}"
 echo -e "  Completion → ${CYAN}$BASH_COMPLETION_DST${RESET}"
 echo
