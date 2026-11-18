@@ -71,7 +71,7 @@ _pyv2_complete() {
             return 0
             ;;
         --decoder)
-            COMPREPLY=( $(compgen -W "auto nvdec vulkan vaapi software" -- "$cur") )
+            COMPREPLY=( $(compgen -W "auto nvdec vaapi software" -- "$cur") )
             return 0
             ;;
         --udp-port)
