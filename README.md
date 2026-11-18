@@ -20,6 +20,7 @@ Designed for unattended or kiosk-style playback — shuffle, loop, variable spee
   - [ADVANCED](#advanced)
 - [Running](#running-after-basic-install)
 - [Command-Line Reference](#command-line-reference)
+- [Per-Video Playback Speed (Auto Speed Tags)](#per-video-playback-speed-auto-speed-tags)
 - [Controlling Playback with `.ignore` Files](#controlling-playback-with-ignore-files)
 - [Sub-Playlists (Model Filter)](#sub-playlists-model-filter)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
@@ -261,7 +262,7 @@ pyVid \
 | `--playSpeed` \<spd> | 2.0     | Playback speed multiplier 0.5 - 10.0 in 0.5 increments       |
 | `--decoder` \<dec>   | auto    | Hardware decoder: `auto` `nvdec` `vaapi` `software` |
 | `--enableOSDcurpos`  | off     | Show always-visible playback position counter (upper-left). Toggle with `O` |
-| `--autoSpeed`        | off     | Honour `auto_speed` XMP tags embedded in video files         |
+| `--autoSpeed`        | off     | Honour `auto_speed` XMP tags embedded in video files. See [Auto Speed Tags](#per-video-playback-speed-auto-speed-tags) |
 
 > Speeds above 6× need proportionally more decoding work. 10× has been tested with 1080p HEVC
 > on VA-API; 4K or 60 fps sources may not keep up at the highest speeds on slower GPUs.
@@ -302,7 +303,7 @@ pyVid \
 
 ### Speed Tag Tools
 
-These operate on video file metadata (XMP tags) and exit immediately after running.<br> Requires `exiftool`.
+These operate on video file metadata (XMP tags) and exit immediately after running.<br> Requires `exiftool`. See [Auto Speed Tags](#per-video-playback-speed-auto-speed-tags) for a full walkthrough.
 `--addAutoSpeed` and `--delAutoSpeed` cannot be combined with `--loadPlayList`.
 
 | Cmd Line Argument         | Description                                                                                                                             |
@@ -311,6 +312,117 @@ These operate on video file metadata (XMP tags) and exit immediately after runni
 | `--delAutoSpeed`          | Remove the `auto_speed` XMP tag from matched files. Prompts for confirmation.                                                           |
 | `--searchAutoSpeed` [spd] | Search for `auto_speed` tags and print a report. Omit speed to list all tagged files.                                                   |
 | `--dryRun`                | Preview what `--addAutoSpeed` or `--delAutoSpeed` would do without modifying any files                                                  |
+
+---
+
+## Per-Video Playback Speed (Auto Speed Tags)
+
+Most of a collection usually plays fine at a single speed, but some videos need a different one:
+a slow scene you want to watch at 1×, or a long, uneventful video you want to get through at 8×.
+Rather than pressing `+`/`-` every time one of those comes up, you can store the preferred speed
+**inside the video file itself** as an XMP metadata tag called **Auto Speed**. When `--autoSpeed`
+is on, pyVid2-qt reads that tag as each video starts and plays the video at the stored speed.
+
+- Auto Speed values range from **0.5×** to **10×** in **0.5** increments (0.5, 1, 1.5, … 9.5, 10).
+  These are the same steps `--playSpeed` and the `+`/`-` keys use.
+- The tag is written to the file's XMP metadata (`XMP-pyvid2:AutoSpeed`, shown in reports as
+  `auto_speed_<speed>`, e.g. `auto_speed_4.5`). Only the metadata changes; the audio and video
+  streams are not re-encoded.
+- All Auto Speed operations need `exiftool` (`sudo pacman -S perl-image-exiftool`).
+
+### How `--playSpeed` and `--autoSpeed` work together
+
+`--playSpeed` sets the **base speed** for the session (default `2.0`). With `--autoSpeed` on:
+
+| Video                                | Plays at                                |
+|--------------------------------------|-----------------------------------------|
+| No Auto Speed tag                    | The base speed from `--playSpeed`       |
+| Has an Auto Speed tag (e.g. `1.5`)   | The tag's speed, for that video only    |
+| Next untagged video after a tagged one | Back to the base speed, automatically |
+
+When a tagged video starts and its speed differs from the current one, the OSD shows
+`Auto Speed: auto_speed_<speed>` for a moment. Once that video ends, the base speed comes back
+for the next video.
+
+> Any speed change you make with `+`/`-` while a tagged video is playing lasts only for that
+> video. The base speed comes back when the next video starts.
+
+Without `--autoSpeed`, the tags are ignored and every video plays at `--playSpeed`.
+
+```bash
+# Play most videos at 5×, but use each file's Auto Speed tag when it has one
+pyVid --Paths /mnt/videos --playSpeed 5 --autoSpeed
+```
+
+### Managing tags: `--addAutoSpeed`, `--delAutoSpeed`, `--searchAutoSpeed`
+
+These three options are command-line tools, not playback options. They build a file list from the
+usual sources (`--Paths`, `--Files`, `--Glob`, plus `--noRecurse` and `.ignore` files), do their
+job, print a report, and exit without opening the player.
+
+| Option                      | Sources allowed                                    | Confirmation                         |
+|-----------------------------|----------------------------------------------------|--------------------------------------|
+| `--addAutoSpeed` \<spd>     | `--Paths` `--Files` `--Glob`                       | Type `Yes` when tagging 20+ files    |
+| `--delAutoSpeed`            | `--Paths` `--Files` `--Glob`                       | Always asks you to type `Yes`        |
+| `--searchAutoSpeed` [spd]   | `--Paths` `--Files` `--Glob` `--loadPlayList`      | None (read-only)                     |
+
+`Yes` is case-sensitive. Pressing Enter or typing anything else cancels the operation.
+
+#### `--addAutoSpeed <speed>`: add an Auto Speed tag
+
+Writes an Auto Speed tag with the given speed to every matched file. If a file already has a tag,
+it is replaced. Before writing, pyVid2-qt scans the files and shows how many are untagged, how many
+already have this speed, and how many have a different speed (listed as `old → new`).
+
+```bash
+# Tag one video to always play at 1.5×
+pyVid --Files ~/Videos/slow_scene.mp4 --addAutoSpeed 1.5
+
+# Tag every video in a directory tree for 8× playback, previewing first
+pyVid --Paths /mnt/videos/long-recordings --addAutoSpeed 8 --dryRun
+pyVid --Paths /mnt/videos/long-recordings --addAutoSpeed 8
+
+# Tag files matching a glob pattern
+pyVid --Glob "/mnt/videos/lecture_{1-12}.mkv" --addAutoSpeed 3
+```
+
+#### `--delAutoSpeed`: remove the Auto Speed tag
+
+Removes the Auto Speed tag from the matched files. Only files that actually have a tag are
+changed. The files to be changed are listed first, and you always have to type `Yes` before
+anything is deleted.
+
+```bash
+# Preview which files would lose their tag
+pyVid --Paths /mnt/videos --delAutoSpeed --dryRun
+
+# Remove the tag from a single file
+pyVid --Files ~/Videos/slow_scene.mp4 --delAutoSpeed
+```
+
+#### `--searchAutoSpeed [speed]`: find and report Auto Speed tags
+
+Scans the matched files and prints a report of the tagged ones, grouped by speed, with a summary
+bar chart. Leave out the speed to list every tagged file, or give one to show only files tagged
+with that speed. Nothing is modified. Unlike the other two tools, this one also accepts
+`--loadPlayList`.
+
+```bash
+# Report every Auto Speed tag in a collection
+pyVid --Paths /mnt/videos --searchAutoSpeed
+
+# Show only files tagged for 4.5× playback
+pyVid --Paths /mnt/videos /mnt/more-videos --searchAutoSpeed 4.5
+
+# Check which entries in a playlist have tags
+pyVid --loadPlayList favourites.txt --searchAutoSpeed
+```
+
+#### `--dryRun`
+
+Add `--dryRun` to `--addAutoSpeed` or `--delAutoSpeed` to see exactly what would change without
+touching any files. `--dryRun` can only be used with those two options. `--searchAutoSpeed` never
+changes anything, so it has no dry-run mode.
 
 ---
 
