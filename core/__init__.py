@@ -1,1 +1,1 @@
-"""Core MPV video components"""
+"""Core QT Multimedia video components"""
