@@ -589,6 +589,7 @@ All shortcuts work while the player window is focused.
 | `T` | ~~Toggle video title display~~                               |
 | `G` | ~~Toggle greyscale~~                                         |
 | `H` | Show help overlay (cycles: keyboard → IR remote → Off)       |
+| `F1`–`F4` | Menus: Main / Playlists / Common Controls / Configuration (see [Menus](#menus)) |
 
 ### Playlist
 
@@ -635,16 +636,39 @@ Remote button names map to player actions via `~/.local/share/pyVid2-qt/ir_keyma
 | `LOOP` | Toggle repeat (loop current video) |
 | `RESTART` | Restart current video |
 | `SCREENSHOT` / `SCRNSHOT` | Take a screenshot |
-| `MENU` | Show help overlay |
+| `MENU` | Show help overlay (cycles: keyboard → IR remote → Off) |
 | `HUD` | Toggle HUD pin (keep HUD visible) |
 | `FILTER` | [Sub-playlist](#sub-playlists-model-filter) of the current model On / Off |
-| `SHUFFLE` | Randomize (shuffle) playlist |
-| `1` | Cycle position OSD: Off → position → position/duration → Off |
-| `3` | Save current playlist to a file |
-| `4` | Print playlist to console |
-| `5` | Randomize (shuffle) playlist |
-| `6` | Show video metadata |
-| `7` | Toggle video title display |
+| `SHUFFLE` | Toggle shuffle / sort of the active playlist |
+| `A` (yellow) | Main Menu |
+| `B` (blue) | Playlists menu |
+| `C` (red) | Common Controls menu |
+| `D` (green) | Configuration menu (session-only settings) |
+| `0`–`9` | Menu selection only (`0` = Back / Close); ignored while no menu is open |
+
+### Menus
+
+The colour buttons (or `F1`–`F4` on the keyboard) open a menu at the left of the screen.
+Press `1`–`9` to choose an item (or click it), `0` to go back, and the same colour button again to close.
+Long lists such as **Load Playlist** have pages: `REW` / `FWD` (keyboard `←` / `→` or `PgUp` / `PgDn`,
+or the mouse wheel) turn them. On menus without pages they seek as usual.
+A menu stays up until you close it; an idle time-out (default 10 minutes, set in
+**Configuration → Menu Time-out**, or *Never*) eventually removes a forgotten one.
+
+Toggles that show their state in the menu (Repeat, Mute, Shuffle / Sort, …) change silently: the
+value beside the item is the feedback. Actions such as Restart Video or Screenshot still show their
+notification; the menu steps aside while it is up and then comes back.
+
+**View / Play Active Playlist** (Playlists menu) shows the active playlist with the playing video
+marked ▶ (⏸ when paused). `PLAY_NEXT` / `PLAY_PREV` move the highlight up / down (swap them in
+**Configuration → Playlist Viewer Up / Down**; keyboard `↑` / `↓` always move literally),
+`REW` / `FWD` move a screenful, and `PLAY_PAUSE` (keyboard `Enter` / `Space`, or double-click) plays the
+highlighted video — or pauses / resumes it if it is the one playing. Playback jumps to that entry and
+continues from there; nothing is added to the playlist. Entries that are missing or fail to load turn red.
+
+**Load Playlist** lists the `*.txt` playlists in `$PLAYLIST_HOME` and `~/+Playlists` (if both exist,
+pick the folder first). A loaded playlist becomes the acting master playlist until another one is
+loaded or **Restore Master Playlist** brings back the original. Neither is available in Sub-Playlist mode.
 
 > Button codes in `ir_keymap.conf` are hex values from your specific remote. Edit this file to match
 > the codes your remote actually sends. See [IR_Pico_W/README.md](IR_Pico_W/README.md) for full setup instructions,
