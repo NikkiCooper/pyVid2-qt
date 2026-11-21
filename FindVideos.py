@@ -107,11 +107,7 @@ class FindVideos:
             None
         """
         # Supported extensions.
-        ext = ['.vob', '.mp4', '.mkv', '.mov', '.avi', '.flv', '.wmv', '.webm', '.3gp', '.gif']
-        # Remove '.gif' from the ext list if the opts['disableGif_flag'] is set
-        if self.opts.disableGIF:
-            ext = [e for e in ext if e != '.gif']
-
+        ext = ['.vob', '.mp4', '.mkv', '.mov', '.avi', '.flv', '.wmv', '.webm', '.3gp']
         # All files were validated by argparse, so no need to validate them again.
         # Instead, make sure their extensions are supported.
         Files.sort()
@@ -136,10 +132,47 @@ class FindVideos:
             FileNotFoundError: If the specified playlist file does not exist
             IOError: If an error occurs while reading the file
         """
+        # Append to existing videoList instead of replacing it (for multiple playlists)
+        valid, skipped = FindVideos.read_playlist(playListFile)
+        self.videoList.extend(valid)
+        if skipped:
+            print(f"Warning: {len(skipped)} invalid entr{'y' if len(skipped) == 1 else 'ies'} "
+                  f"skipped in playlist '{playListFile}':")
+            for entry in skipped:
+                print(f"    {entry}")
+
+    @staticmethod
+    def read_playlist(playListFile):
+        """
+        Read a playlist file and verify its entries.
+
+        Blank lines are ignored.  An entry is kept only if it names an existing
+        file with a supported video extension (a cheap check — no ffprobe — so
+        large playlists load without stalling the UI).
+
+        Args:
+            playListFile: Path to the playlist file
+
+        Returns:
+            (valid, skipped): lists of kept entries and rejected entries, in file order
+
+        Raises:
+            OSError: If the playlist file cannot be opened or read
+        """
+        ext = ('.vob', '.mp4', '.mkv', '.mov', '.avi', '.flv', '.wmv', '.webm', '.3gp')
+        valid, skipped = [], []
         # pylint: disable=unspecified-encoding
-        with open(os.path.expanduser(playListFile) ) as file:
-            # Append to existing videoList instead of replacing it (for multiple playlists)
-            self.videoList.extend([line.strip() for line in file])
+        with open(os.path.expanduser(playListFile)) as file:
+            for line in file:
+                entry = line.strip()
+                if not entry:
+                    continue
+                path = os.path.expanduser(entry)
+                if path.lower().endswith(ext) and os.path.isfile(path):
+                    valid.append(path)
+                else:
+                    skipped.append(entry)
+        return valid, skipped
 
     def recursive(self, dpath: str, recurse: bool = False, ignore: bool = False, disableGIF: bool = False) -> None:
         """
@@ -154,15 +187,9 @@ class FindVideos:
             If set to True, enables recursive traversal of subdirectories. Defaults to False.
         ignore: bool, optional
             If set to True, skips processing of directories containing files named ".ignore". Defaults to False.
-        disableGIF: bool, optional
-            If set to True, excludes GIF files from the supported extensions list. Defaults to False.
         """
         # Supported extensions.
-        ext = ['.vob', '.mp4', '.mkv', '.mov', '.avi', '.flv', '.wmv', '.webm', '.3gp', '.gif']
-
-        # Remove '.gif' from the ext list if the opts['disableGif_flag'] is set
-        if disableGIF:
-            ext = [e for e in ext if e != '.gif']
+        ext = ['.vob', '.mp4', '.mkv', '.mov', '.avi', '.flv', '.wmv', '.webm', '.3gp']
 
         files = os.listdir(dpath)
         files.sort()
