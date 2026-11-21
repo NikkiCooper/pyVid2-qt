@@ -11,6 +11,7 @@ Fullscreen-only video player with hardware acceleration.
 
 import os
 import random
+from contextlib import contextmanager
 import Bcolors
 
 bc = Bcolors.Bcolors()
@@ -25,6 +26,7 @@ from IRRemoteControl import IRRemoteControl
 from ui.hud import HUD, CurPosOsd
 from core.video_widget import VideoWidget
 import HWAccel
+from functools import partial
 from SpeedTag import read_tag, tag_label, VALID_SPEEDS
 
 SPEED_STEPS = VALID_SPEEDS   # +/- key steps: 0.5 … 10.0
@@ -131,6 +133,17 @@ class MainWindow(QMainWindow):
         self._sub_models      = set()   # model names the sub-playlist was built from
         self._sub_shuffle     = False   # sub-playlist shuffle state (J) — independent of master
 
+        # Loaded playlists (Menu → Load Playlist).  A loaded playlist becomes the
+        # acting master (self.playlist); the original master is parked here in
+        # memory.  None = the original master is active.
+        self._original_master = None
+        self._loaded_path     = None    # file path of the loaded playlist while one is active
+
+        # Paths that were missing or failed to load — shown red in the playlist viewer
+        self._bad_paths = set()
+        # True while a menu item runs quietly (see osd_muted())
+        self._osd_muted = False
+
         # Wall-clock position counter (incremented by _position_timer every second)
         self._hud_position_ms = 0
 
@@ -205,8 +218,22 @@ class MainWindow(QMainWindow):
         self.raise_()
         self.activateWindow()
 
+    @contextmanager
+    def osd_muted(self):
+        """
+        Suppress show_osd() for the duration — used when an action is run from the
+        menu and the menu itself shows the result (live value, viewer marker).
+        """
+        prev, self._osd_muted = self._osd_muted, True
+        try:
+            yield
+        finally:
+            self._osd_muted = prev
+
     def show_osd(self, message, duration_ms=2000, persistent=False):
         """Display a notification overlay in the center of the screen."""
+        if self._osd_muted and not persistent:
+            return
         if self._help_state == 1:
             self.help_overlay.hide()
         elif self._help_state == 2:
@@ -223,18 +250,23 @@ class MainWindow(QMainWindow):
         if not persistent:
             self.osd_timer.stop()
             self.osd_timer.start(duration_ms)
+            # Hide an open menu while the notification shows; hide_osd() brings it back.
+            # (Persistent OSDs never time out, so they leave the menu alone.)
+            self.menu.suspend()
 
     def hide_osd(self):
         """Hide OSD unless it's set to persist (e.g. pause state)."""
         if not self.osd_persistent:
             self.osd_label.setWindowOpacity(0.0)
             self.osd_timer.stop()
+            self.menu.resume()
 
     def clear_osd(self):
         """Force-hide OSD regardless of persistent state."""
         self.osd_persistent = False
         self.osd_label.setWindowOpacity(0.0)
         self.osd_timer.stop()
+        self.menu.resume()
 
     # Bottom 10% of screen activates the HUD
     _HUD_ACTIVATION_RATIO = 0.90   # mouse_y > screen_height * 0.90 → activate
@@ -401,6 +433,7 @@ class MainWindow(QMainWindow):
 
         # Auto-advance when video ends (via _on_video_ended for loopDelay support)
         self.video_widget.video_ended.connect(self._on_video_ended)
+        self.video_widget.load_failed.connect(self._on_load_failed)
 
         # Enable mouse tracking on the main window too (covers margins/control panel area)
         self.setMouseTracking(True)
@@ -413,6 +446,10 @@ class MainWindow(QMainWindow):
         self.help_overlay   = HelpOverlay(self)
         self.remote_overlay = RemoteOverlay(self)
         self._help_state = 0   # 0=off  1=keyboard shortcuts  2=remote control
+
+        # --- Menus (IR A-D / F1-F4) ---
+        from ui.menu import MenuOverlay
+        self.menu = MenuOverlay(self)
 
         # --- Current position OSD ---
         self._curpos_osd = CurPosOsd(self)
@@ -457,11 +494,11 @@ class MainWindow(QMainWindow):
     def _setup_ir_callbacks(self):
         """Register all IR remote button callbacks."""
         self.ir_remote.register_callback('PWR',        self._invoke_on_main_thread(self.close))
-        self.ir_remote.register_callback('PLAY_NEXT',  self._invoke_on_main_thread(self.play_next))
-        self.ir_remote.register_callback('PLAY_PREV',  self._invoke_on_main_thread(self.play_previous))
-        self.ir_remote.register_callback('REW',        self._invoke_on_main_thread(self.seek_backward),allow_repeat=True)
-        self.ir_remote.register_callback('FWD',        self._invoke_on_main_thread(self.seek_forward),allow_repeat=True)
-        self.ir_remote.register_callback('PLAY_PAUSE', self._invoke_on_main_thread(self.toggle_play_pause))
+        self.ir_remote.register_callback('PLAY_NEXT',  self._invoke_on_main_thread(self._ir_play_next), allow_repeat=True)
+        self.ir_remote.register_callback('PLAY_PREV',  self._invoke_on_main_thread(self._ir_play_prev), allow_repeat=True)
+        self.ir_remote.register_callback('REW',        self._invoke_on_main_thread(self._ir_rew),allow_repeat=True)
+        self.ir_remote.register_callback('FWD',        self._invoke_on_main_thread(self._ir_fwd),allow_repeat=True)
+        self.ir_remote.register_callback('PLAY_PAUSE', self._invoke_on_main_thread(self._ir_play_pause))
         self.ir_remote.register_callback('RESTART',    self._invoke_on_main_thread(self.restart_video))
         self.ir_remote.register_callback('VOL+',       self._invoke_on_main_thread(self.vol_up),allow_repeat=True)
         self.ir_remote.register_callback('VOL-',       self._invoke_on_main_thread(self.vol_down),allow_repeat=True)
@@ -469,23 +506,155 @@ class MainWindow(QMainWindow):
         self.ir_remote.register_callback('SPEED+',     self._invoke_on_main_thread(self.speed_up))
         self.ir_remote.register_callback('SPEED-',     self._invoke_on_main_thread(self.speed_down))
         self.ir_remote.register_callback('LOOP',       self._invoke_on_main_thread(self.toggle_repeat))
-        self.ir_remote.register_callback('MENU',       self._invoke_on_main_thread(self.show_menu))
+        self.ir_remote.register_callback('MENU',       self._invoke_on_main_thread(self.show_menu))             # help cycle (legacy name)
         self.ir_remote.register_callback('HUD',        self._invoke_on_main_thread(self.toggle_hud_pin))
         self.ir_remote.register_callback('SCREENSHOT', self._invoke_on_main_thread(self.take_screenshot))
         self.ir_remote.register_callback('SCRNSHOT',   self._invoke_on_main_thread(self.take_screenshot))
         self.ir_remote.register_callback('FILTER',     self._invoke_on_main_thread(self.toggle_sub_playlist))
-        self.ir_remote.register_callback('SHUFFLE',    self._invoke_on_main_thread(self.randomize_playlist))    # Shuffle
-        self.ir_remote.register_callback('1',          self._invoke_on_main_thread(self.toggle_curpos_osd))     #OSD
-        self.ir_remote.register_callback('3',          self._invoke_on_main_thread(self.save_playlist))         # Save playlist
-        self.ir_remote.register_callback('4',          self._invoke_on_main_thread(self.print_playlist))        # print playlist
-        self.ir_remote.register_callback('5',          self._invoke_on_main_thread(self.randomize_playlist))    # Shuffle
-        self.ir_remote.register_callback('6',          self._invoke_on_main_thread(self.show_metadata))         # show metadata
-        self.ir_remote.register_callback('7',          self._invoke_on_main_thread(self.toggle_video_title))    # Toggle video title
+        self.ir_remote.register_callback('SHUFFLE',    self._invoke_on_main_thread(self.toggle_shuffle))        # Toggle Shuffle/Sort
 
-        # Stubs for future IR remote buttons:
-        self.ir_remote.register_callback('8',          self._invoke_on_main_thread(self.stub_1))                # Stub_1
-        self.ir_remote.register_callback('9',          self._invoke_on_main_thread(self.stub_2))                # Stub_2
-        self.ir_remote.register_callback('0',          self._invoke_on_main_thread(self.stub_3))                # Stub_3
+        # A-D (yellow, blue, red, green) open the menus: Main, Playlists, Common Controls, Configuration.
+        for key in ('A', 'B', 'C', 'D'):
+            self.ir_remote.register_callback(key, self._invoke_on_main_thread(partial(self._menu_root, key)))
+
+        # Numeral keys never trigger player actions directly (see ir_keymap.conf): they are
+        # routed to the open menu only, and ignored while no menu is open.
+        for n in range(10):
+            self.ir_remote.register_callback(str(n), self._invoke_on_main_thread(partial(self._menu_digit, n)))
+
+    # ==================== Menu routing ====================
+    # These look up self.menu at press time: IR callbacks are registered before init_ui() builds it.
+
+    def _menu_root(self, key):
+        self.menu.toggle_root(key)
+
+    def _menu_digit(self, n):
+        self.menu.digit(n)
+
+    def _ir_play_next(self):
+        """PLAY_NEXT: move the playlist-viewer highlight (up by default); otherwise next video."""
+        if not self.menu.viewer_remote_move(+1):
+            self.play_next()
+
+    def _ir_play_prev(self):
+        if not self.menu.viewer_remote_move(-1):
+            self.play_previous()
+
+    def _ir_play_pause(self):
+        """PLAY_PAUSE: play the viewer's highlighted entry (or pause it if playing); else pause."""
+        if not self.menu.viewer_play():
+            self.toggle_play_pause()
+
+    def _ir_fwd(self):
+        """FWD: pages a multi-page menu (e.g. Load Playlist); otherwise seek forward."""
+        if not self.menu.page(+1):
+            self.seek_forward()
+
+    def _ir_rew(self):
+        if not self.menu.page(-1):
+            self.seek_backward()
+
+    # ==================== Loaded playlists ====================
+
+    def load_playlist_file(self, path):
+        """
+        Load a playlist file (Menu → Load Playlist) and make it the acting master.
+
+        - The original master is parked in memory the first time a playlist is loaded;
+          loading another one just replaces the acting master.  restore_master_playlist()
+          brings the original back.  Only that one extra list is kept in memory.
+        - Unlike a sub-playlist (a model-name subset of the master), a loaded playlist
+          *is* the master until replaced: the master shuffle state applies, master
+          end-of-list rules apply (exit unless --loop), and Repeat Video is reset.
+        - Not allowed while in Sub-Playlist mode.
+        - Entries are verified by FindVideos.read_playlist() (file exists + supported
+          extension); invalid entries are skipped and listed on the console.  A file
+          that is missing, unreadable, or has no valid entries changes nothing.
+        """
+        name = os.path.splitext(os.path.basename(path))[0]
+        if self._sub_active:
+            self.show_osd('<span style="color:rgb(255,80,80)">Cannot load a playlist '
+                          'while in Sub-Playlist mode</span>', duration_ms=2500)
+            return
+        from FindVideos import FindVideos
+        try:
+            playlist, skipped = FindVideos.read_playlist(path)
+        except OSError as e:
+            print(f"{bc.Light_Red_f}Cannot read playlist {path}:{bc.White_f} {e}{bc.RESET}")
+            self.show_osd(f'Cannot read: <span style="color:rgb(255,80,80)">{name}</span>',
+                          duration_ms=2500)
+            return
+        if skipped:
+            print(f"{bc.Yellow_f}{len(skipped)} invalid entr{'y' if len(skipped) == 1 else 'ies'} "
+                  f"skipped in {path}:{bc.RESET}")
+            for entry in skipped:
+                print(f"    {entry}")
+        if not playlist:
+            self.show_osd(f'No valid videos in <span style="color:rgb(255,80,80)">{name}</span>',
+                          duration_ms=2500)
+            return
+        if self._original_master is None:
+            self._original_master = self.playlist     # park the original master (first load only)
+        self._loaded_path = path
+        self._activate_playlist(playlist, name)
+
+    def restore_master_playlist(self):
+        """
+        Make the original master the acting master again.  Treated like loading a
+        new playlist: shuffled if shuffle is on (sorted otherwise), played from the start.
+        """
+        if self._sub_active:
+            self.show_osd('<span style="color:rgb(255,80,80)">Cannot restore the master playlist '
+                          'while in Sub-Playlist mode</span>', duration_ms=2500)
+            return
+        if self._original_master is None:
+            self.show_osd('<span style="color:rgb(160,160,160)">Master playlist already active</span>',
+                          duration_ms=2000)
+            return
+        playlist = self._original_master
+        if not self._shuffle_enabled():
+            playlist.sort()
+        self._original_master = None
+        self._loaded_path     = None
+        self._activate_playlist(playlist, 'Master')
+
+    def loaded_playlist_active(self):
+        """True while a loaded playlist (not the original master) is the acting master."""
+        return self._original_master is not None
+
+    def loaded_playlist_path(self):
+        return self._loaded_path
+
+    def master_position(self):
+        """(1-based position, total) in the acting master — its saved spot while a sub-playlist is on."""
+        if self._sub_active:
+            return self._master_index + 1, len(self._master_playlist)
+        return self.current_index + 1, len(self.playlist)
+
+    def active_playlist_label(self):
+        """Name of the acting master: the loaded playlist's name, or 'Master'."""
+        if self._loaded_path:
+            return os.path.splitext(os.path.basename(self._loaded_path))[0]
+        return "Master"
+
+    def _activate_playlist(self, playlist, label):
+        """
+        Make `playlist` the acting master: shuffle if enabled, reset per-video
+        state (Repeat Video), and start playback from the first entry.
+        """
+        if self._shuffle_enabled():
+            random.shuffle(playlist)
+        self.playlist      = playlist
+        self.current_index = 0
+        self._is_repeating = False
+
+        print(f"{bc.Light_Magenta_f}PlayList loaded:{bc.Light_Blue_f} {label}"
+              f"{bc.White_f} ({bc.Green_f}{len(playlist)}{bc.White_f} videos){bc.RESET}")
+        self.play_file(self.playlist[0], notice=(
+            f'<span style="color:rgb(255,255,255)">PlayList:</span> {label} '
+            f'<span style="color:rgb(255,255,255)">(</span>'
+            f'<span style="color:rgb(0,210,0)">{len(playlist)}</span>'
+            f'<span style="color:rgb(255,255,255)"> videos)</span>'))
 
     def _tick_position(self):
         """
@@ -566,6 +735,35 @@ class MainWindow(QMainWindow):
                               len(self.playlist), self._speed, self._is_paused,
                               self._is_repeating)   # duration/position = 0 at load; poll fills them in
         self.video_widget.load_file(file_path, new_player=decoders_changed)
+
+    def play_index(self, index):
+        """
+        Jump to playlist entry `index` and play it (playlist viewer).  Playback then
+        continues from the playlist after it — nothing is inserted.  Returns False
+        (and marks the entry bad) if the file is missing or unreadable.
+        """
+        if not (0 <= index < len(self.playlist)):
+            return False
+        path = self.playlist[index]
+        if not (os.path.isfile(path) and os.access(path, os.R_OK)):
+            self._bad_paths.add(path)
+            print(f"{bc.Light_Red_f}Cannot play (missing/unreadable):{bc.White_f} {path}{bc.RESET}")
+            return False
+        self._bad_paths.discard(path)
+        self.current_index = index
+        self.play_file(path)
+        return True
+
+    def _on_load_failed(self, path):
+        """The player could not load `path` (broken / unsupported): remember and report it."""
+        self._bad_paths.add(path)
+        name = os.path.basename(path)
+        print(f"{bc.Light_Red_f}Cannot play (failed to load):{bc.White_f} {path}{bc.RESET}")
+        if self.menu.viewer_open:
+            self.menu.viewer_refresh(status=f"Could not load: {name}")
+        else:
+            self.show_osd(f'Could not load: <span style="color:rgb(255,80,80)">{name}</span>',
+                          duration_ms=3000)
 
     def play_next(self):
         if not self.playlist:
@@ -854,6 +1052,9 @@ class MainWindow(QMainWindow):
         self.hud.update_state(filename, self.current_index + 1, len(self.playlist),
                               self._speed, False, self._is_repeating, dur_ms, 0)
 
+    def curpos_osd_label(self):
+        return ("OFF", "Position", "Position + Duration")[self._curpos_state]
+
     def toggle_curpos_osd(self):
         """Cycle CurPosOsd through OFF → CURPOS → CURPOS/DURATION → OFF."""
         self._curpos_state = (self._curpos_state + 1) % 3
@@ -1042,38 +1243,104 @@ class MainWindow(QMainWindow):
         if not self.playlist:
             return
         title = f"Sub-Playlist ({' + '.join(sorted(self._sub_models))})" \
-            if self._sub_active else "Master Playlist"
+            if self._sub_active else f"Playlist: {self.active_playlist_label()}"
         print(f"\n{bc.Light_Magenta_f}{title}:{bc.Light_Blue_f}\n")
         for videoFile in self.playlist:
             print(videoFile)
         print(f"\n{bc.Light_Yellow_f}Total Videos:{bc.Green_f} {len(self.playlist)}{bc.RESET}\n\n")
 
     def save_playlist(self):
-        """
-        Saves the current playlist to a specified file.
-
-        Writes each video from the current video list into a specified file
-        within the save playlist directory. Each video entry is written in
-        a new line.
-
-        Parameters:
-        filename (str): The name of the file where the playlist will be stored.
-        """
-        if not self.playlist:
-            return
-        base_dir = "~/+Playlists"
-        _savePlayListPath = os.path.expanduser(base_dir)
+        """'.' key: save the active list — the sub-playlist while one is on, else the master."""
         if self._sub_active:
-            # e.g. 'Hanna F-Playlist-62.txt'
-            _filename = '+'.join(sorted(self._sub_models)) + '-Playlist-' + str(len(self.playlist)) + '.txt'
+            self.save_sub_playlist()
         else:
-            _filename = 'VideoPlayList-' + str(len(self.playlist)) + '.txt'
-        _file = _savePlayListPath + '/' + _filename
-        with open(_file, "w") as file:
-            for line in self.playlist:
-                file.write(str(line) + "\n")
-        #self.show_osd("Save Playlist as " + _filename, duration_ms=1500)
-        self.show_osd(f'Save Playlist as <span style="color:rgb(0,210,0)">{_filename}</span>', duration_ms=1500)
+            self.save_master_playlist()
+
+    def save_master_playlist(self):
+        """
+        Save the acting master (the original or a loaded playlist) — even while a
+        sub-playlist is on.  e.g. 'VideoPlayList-812.txt', 'Cristina-Playlist-140.txt'
+        (never the loaded file's own name, so it is not overwritten).
+        """
+        entries = self._master_playlist if self._sub_active else self.playlist
+        if not entries:
+            return
+        prefix = (self.active_playlist_label() + '-Playlist-') if self._loaded_path else 'VideoPlayList-'
+        self._write_playlist(entries, f'{prefix}{len(entries)}.txt')
+
+    def save_sub_playlist(self):
+        """Save the sub-playlist, e.g. 'Hanna F-Playlist-62.txt'."""
+        if not self._sub_active or not self.playlist:
+            return
+        self._write_playlist(self.playlist,
+                             '+'.join(sorted(self._sub_models)) + f'-Playlist-{len(self.playlist)}.txt')
+
+    def _write_playlist(self, entries, filename):
+        """Write `entries` one per line to ~/+Playlists/<filename>."""
+        save_dir = os.path.expanduser("~/+Playlists")
+        path = os.path.join(save_dir, filename)
+        try:
+            os.makedirs(save_dir, exist_ok=True)
+            with open(path, "w") as file:
+                for line in entries:
+                    file.write(str(line) + "\n")
+        except OSError as e:
+            print(f"{bc.Light_Red_f}Cannot save playlist {path}:{bc.White_f} {e}{bc.RESET}")
+            self.show_osd(f'Save failed: <span style="color:rgb(255,80,80)">{e.strerror}</span>',
+                          duration_ms=2500)
+            return
+        print(f"{bc.White_f}Playlist saved:{bc.Light_Blue_f} {path}{bc.RESET}")
+        self.show_osd(f'Save Playlist as <span style="color:rgb(0,210,0)">{filename}</span>', duration_ms=1500)
+
+    # ==================== Session settings (Menu D — not persisted yet) ====================
+
+    LOOP_DELAY_STEPS  = [0, 1, 2, 3, 5, 10]          # seconds
+    CURSOR_HIDE_STEPS = [0, 1, 2, 3, 5, 10]          # seconds, 0 = never hide
+
+    @staticmethod
+    def _next_step(steps, current):
+        """Next value after `current` in `steps`, wrapping (an off-list value jumps to the next higher)."""
+        for v in steps:
+            if v > current:
+                return v
+        return steps[0]
+
+    def toggle_loop(self):
+        self._cli_loop = not self._cli_loop
+        self.opts.loop = self._cli_loop
+
+    def toggle_filter_loop(self):
+        self.opts.noFilterLoop = not getattr(self.opts, "noFilterLoop", False)
+
+    def cycle_loop_delay(self):
+        self.opts.loopDelay = self._next_step(self.LOOP_DELAY_STEPS, self.opts.loopDelay)
+
+    def cursor_hide_label(self):
+        sec = self._cursor_hide_timer.interval() / 1000
+        return "Never" if sec <= 0 else f"{sec:g} s"
+
+    def cycle_cursor_hide(self):
+        sec = self._next_step(self.CURSOR_HIDE_STEPS, self._cursor_hide_timer.interval() / 1000)
+        if self.opts:
+            self.opts.cursorHide = sec
+        self._cursor_hide_timer.setInterval(int(sec * 1000))
+        if sec <= 0:
+            self._cursor_hide_timer.stop()
+            if self._cursor_hidden:
+                QApplication.restoreOverrideCursor()
+                self._cursor_hidden = False
+        else:
+            self._cursor_hide_timer.start()
+
+    def toggle_jpg(self):
+        self.opts.useJPG = not self.opts.useJPG
+
+    def toggle_auto_speed(self):
+        self.opts.autoSpeed = not getattr(self.opts, "autoSpeed", False)
+        if not self.opts.autoSpeed and self._auto_speed_saved is not None:
+            # Turning it off mid-override: return to the base speed now
+            self._set_speed(self._auto_speed_saved)
+            self._auto_speed_saved = None
 
     def toggle_greyscale(self):
         # Greyscale requires GStreamer pipeline-level filtering (videobalance
@@ -1112,8 +1379,41 @@ class MainWindow(QMainWindow):
             self._curpos_osd.reposition()
         return super().eventFilter(obj, event)
 
+    _MENU_FKEYS = {Qt.Key.Key_F1: 'A', Qt.Key.Key_F2: 'B', Qt.Key.Key_F3: 'C', Qt.Key.Key_F4: 'D'}
+
+    def _menu_key(self, key):
+        """Keyboard menu handling.  Returns True if the key was consumed."""
+        if key in self._MENU_FKEYS:                                 # F1-F4 = IR A-D
+            self.menu.toggle_root(self._MENU_FKEYS[key])
+            return True
+        if not self.menu.is_open:
+            return False
+        if self.menu.viewer_open:                                   # playlist viewer
+            if key == Qt.Key.Key_Down:
+                return self.menu.viewer_move(+1)
+            if key == Qt.Key.Key_Up:
+                return self.menu.viewer_move(-1)
+            if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+                return self.menu.viewer_play()
+        if Qt.Key.Key_0 <= key <= Qt.Key.Key_9:
+            self.menu.digit(key - Qt.Key.Key_0)
+            return True
+        if key == Qt.Key.Key_Escape:
+            self.menu.close_menu()
+            return True
+        if key == Qt.Key.Key_Backspace:
+            self.menu.back()
+            return True
+        if key in (Qt.Key.Key_Right, Qt.Key.Key_PageDown):          # ←/→ mirror REW/FWD:
+            return self.menu.page(+1)                               # page only if paged, else seek
+        if key in (Qt.Key.Key_Left, Qt.Key.Key_PageUp):
+            return self.menu.page(-1)
+        return False                                                # other keys work as usual
+
     def keyPressEvent(self, event):
         key = event.key()
+        if self._menu_key(key):
+            return
         # Dismiss help overlay before any action that would show an OSD behind it.
         # H and Escape/Q handle the overlay themselves.
         if self._help_state != 0 and key not in (
