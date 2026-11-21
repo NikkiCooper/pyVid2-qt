@@ -33,6 +33,9 @@ class VideoWidget(QVideoWidget):
 
     # Signal emitted when video ends
     video_ended = Signal()
+    # Emitted (with the file path) when the current source cannot be played:
+    # InvalidMedia status or a QMediaPlayer error.  At most once per load_file().
+    load_failed = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -71,6 +74,7 @@ class VideoWidget(QVideoWidget):
         # the current source reaches BufferedMedia.
         self._rate_ready = False     # current source has reached BufferedMedia at least once
         self._url = None
+        self._failed_reported = False
 
         # Loop state
         self.is_looping = False
@@ -138,6 +142,7 @@ class VideoWidget(QVideoWidget):
         old = self.player
         if old is not None:
             old.mediaStatusChanged.disconnect(self._on_media_status_changed)
+            old.errorOccurred.disconnect(self._on_player_error)
             old.stop()
             old.setAudioOutput(None)
             old.setVideoOutput(None)
@@ -146,6 +151,7 @@ class VideoWidget(QVideoWidget):
         self.player.setAudioOutput(self.audio_output)
         self.player.setVideoOutput(self._process_sink)
         self.player.mediaStatusChanged.connect(self._on_media_status_changed)
+        self.player.errorOccurred.connect(self._on_player_error)
 
     # ── Media status ────────────────────────────────────────────────────────
 
@@ -157,6 +163,8 @@ class VideoWidget(QVideoWidget):
             if self.player.source() == self._url:
                 self._rate_ready = True
                 self._sync_rate()
+        elif status == QMediaPlayer.MediaStatus.InvalidMedia:
+            self._report_failure()
         elif status == QMediaPlayer.MediaStatus.EndOfMedia:
             if self.is_looping:
                 # Restart video from beginning; the rate is re-applied on BufferedMedia
@@ -164,6 +172,16 @@ class VideoWidget(QVideoWidget):
                 self.player.play()
             else:
                 self.video_ended.emit()
+
+    def _on_player_error(self, error, _message=""):
+        if error != QMediaPlayer.Error.NoError:
+            self._report_failure()
+
+    def _report_failure(self):
+        """Emit load_failed once for the current source (status + error both fire)."""
+        if self._url is not None and not self._failed_reported and self.player.source() == self._url:
+            self._failed_reported = True
+            self.load_failed.emit(self._url.toLocalFile())
 
     # ── Playback controls ───────────────────────────────────────────────────
 
@@ -179,6 +197,7 @@ class VideoWidget(QVideoWidget):
         # No setPlaybackRate() here: the speed is applied once the new source reaches
         # BufferedMedia (see the note in __init__).
         self._rate_ready = False
+        self._failed_reported = False
         self._url = QUrl.fromLocalFile(filepath)
         self.player.setSource(self._url)
         self.player.play()
