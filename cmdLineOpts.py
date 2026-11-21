@@ -126,7 +126,11 @@ def cmdLineOptions():
 # ── Validators (ported directly from pyVid2/cmdLineOpts.py) ──────────────────
 
 def validate_playList(playlist):
-    """Validate playlist path: absolute, CWD, or PLAYLIST_HOME."""
+    """
+    Validate playlist path: absolute, CWD, PLAYLIST_HOME or ~/+Playlists
+    The environment variable PLAYLIST_HOME takes precedence over ~/+Playlists
+    due to the fact that ~/+Playlists is considered the default location for playlists.
+    """
     if os.path.isabs(playlist):
         if os.path.isfile(os.path.expanduser(playlist)):
             return os.path.expanduser(playlist)
@@ -141,9 +145,13 @@ def validate_playList(playlist):
         home_path = os.path.join(os.environ["PLAYLIST_HOME"], playlist)
         if os.path.isfile(home_path):
             return home_path
+    else:
+        base_path = os.path.join(os.path.expanduser("~/+Playlists"), playlist)
+        if os.path.isfile(base_path):
+            return base_path
 
     raise argparse.ArgumentTypeError(
-        f"Error: {bc.Red_f}'{playlist}'{bc.Light_Yellow_f} was not found in current directory or PLAYLIST_HOME.{bc.RESET}")
+        f"Error: {bc.Red_f}'{playlist}'{bc.Light_Yellow_f} was not found in current directory, PLAYLIST_HOME or ~/+Playlists{bc.RESET}")
 
 
 def validate_user_dirs(path):
