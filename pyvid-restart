@@ -12,12 +12,13 @@
 
 usage() {
     cat <<EOF
-Usage: ${0##*/} [-l] [all | 0 1 2 3 ...]
+Usage: ${0##*/} [-l] all | MONITOR...
 
-  ${0##*/}            restart all instances
   ${0##*/} 2          restart monitor 2
   ${0##*/} 0 3        restart the far left and far right monitors
-  ${0##*/} -l [...]   only list the matching instances, don't restart
+  ${0##*/} all        restart all instances
+  ${0##*/} -l all     only list the matching instances, don't restart
+  ${0##*/} -h         show this help
 
 Monitors, left to right: 0 = far left ... 3 = far right
 (matched by monitor_N_keymap.conf on the command line)
@@ -29,7 +30,11 @@ case "${1:-}" in
     -l|--list) list_only=1; shift ;;
     -h|--help) usage; exit 0 ;;
 esac
-[[ $# -eq 0 ]] && set -- all
+# No monitor given: show help and do nothing. Restarting everything must be asked for with "all".
+if [[ $# -eq 0 ]]; then
+    usage
+    exit 1
+fi
 
 # Anchored on "python main.py" so only the player itself matches. The tmux processes
 # carry the whole launch line too, and SIGUSR1 must never go to anything else.
