@@ -9,6 +9,8 @@
 import sys
 import os
 import ctypes
+import signal
+import socket
 
 # Force X11 (XWayland) — on native Wayland, Qt cannot position top-level windows;
 # the compositor ignores all geometry hints. X11 gives full positioning control.
@@ -52,7 +54,76 @@ if _libav:
 del _cu, _libav
 
 from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QSocketNotifier
 from ui.main_window import MainWindow
+
+
+# ── Remote restart (SIGUSR1) ────────────────────────────────────────────────
+# `pkill -USR1 -f <something unique on the command line>` makes a running instance
+# shut down cleanly and re-launch itself with exactly the same command line, working
+# directory and environment, so the playlist is rescanned from the original sources.
+# Re-launching in place keeps the desktop session's DISPLAY / XAUTHORITY etc., which
+# is what makes this usable over ssh under Wayland/XWayland.
+#
+# SIGUSR1 (not SIGHUP): Linux sends SIGHUP when the launching terminal closes, and
+# that must keep meaning "quit".
+#
+# A Python signal handler only runs when the interpreter gets control, which it does
+# not while Qt's event loop sits waiting in C.  set_wakeup_fd() makes the C-level
+# handler write the signal number to a socket; a QSocketNotifier on the other end
+# wakes the event loop immediately.
+_RESTART_SIGNAL = signal.SIGUSR1
+_wake_rsock = None
+_restart_requested = False
+
+
+def _install_restart_signal():
+    """Catch SIGUSR1 from the very start (its default action is to kill the process)."""
+    global _wake_rsock
+    rsock, wsock = socket.socketpair()
+    rsock.setblocking(False)
+    wsock.setblocking(False)
+    signal.set_wakeup_fd(wsock.fileno(), warn_on_full_buffer=False)
+    signal.signal(_RESTART_SIGNAL, lambda *_: None)   # real work: _on_signal_wakeup()
+    _wake_rsock = (rsock, wsock)                         # keep both ends alive
+
+
+def _watch_restart_signal(app, window):
+    """Once Qt is up: act on SIGUSR1 (including one that arrived during startup)."""
+    rsock = _wake_rsock[0]
+
+    def _on_signal_wakeup():
+        global _restart_requested
+        try:
+            data = rsock.recv(256)
+        except (BlockingIOError, InterruptedError):
+            return
+        if _RESTART_SIGNAL in data and not _restart_requested:
+            _restart_requested = True
+            print("\nRestart requested (SIGUSR1): restarting pyVid2-qt...", flush=True)
+            window.close()       # closeEvent: stop IR listener, close player
+            app.quit()
+
+    notifier = QSocketNotifier(rsock.fileno(), QSocketNotifier.Type.Read, app)
+    notifier.activated.connect(_on_signal_wakeup)
+    app._restart_notifier = notifier     # keep a reference
+
+
+def _restart_self():
+    """Replace this process with a fresh copy of itself (same args, cwd, environment)."""
+    signal.set_wakeup_fd(-1)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    # fd 2 points at /dev/null (see top of file); hand the new process the real stderr,
+    # or its Python tracebacks would be lost after the first restart.
+    os.dup2(sys.stderr.fileno(), 2)
+    # Run the same interpreter, but keep the original argv verbatim (e.g. "python main.py ...")
+    # so `pgrep -f` / `pkill -f` patterns still match after any number of restarts.
+    try:
+        os.execv(sys.executable, sys.orig_argv)
+    except OSError as e:
+        print(f"Restart failed: {e}", file=sys.stderr, flush=True)
+        sys.exit(1)
 
 
 def _qt_argv():
@@ -75,6 +146,8 @@ def _qt_argv():
 
 
 def main():
+    _install_restart_signal()
+
     from version import __version__
 
     # Parse CLI args BEFORE QApplication so decoder setup (rank changes, env vars)
@@ -109,7 +182,10 @@ def main():
     app = QApplication(_qt_argv())
     window = MainWindow(opts=opts)
     window.show()
+    _watch_restart_signal(app, window)
     rc = app.exec()
+    if _restart_requested:
+        _restart_self()
     sys.exit(rc or window.exit_code)
 
 if __name__ == "__main__":

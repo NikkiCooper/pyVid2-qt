@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+#  pyvid-restart Copyright (c) 2026 Nikki Cooper
+#
+#  Restart running pyVid2-qt instances by sending them SIGUSR1. Each one closes and
+#  re-launches itself with its original command line, so its playlist is rescanned.
+#
+#  Instances are identified by their --ir-keymap file. Monitors, left to right:
+#     0  far left    monitor_0_keymap.conf
+#     1              monitor_1_keymap.conf
+#     2              monitor_2_keymap.conf
+#     3  far right   monitor_3_keymap.conf
+
+usage() {
+    cat <<EOF
+Usage: ${0##*/} [-l] [all | 0 1 2 3 ...]
+
+  ${0##*/}            restart all instances
+  ${0##*/} 2          restart monitor 2
+  ${0##*/} 0 3        restart the far left and far right monitors
+  ${0##*/} -l [...]   only list the matching instances, don't restart
+
+Monitors, left to right: 0 = far left ... 3 = far right
+(matched by monitor_N_keymap.conf on the command line)
+EOF
+}
+
+list_only=0
+case "${1:-}" in
+    -l|--list) list_only=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+esac
+[[ $# -eq 0 ]] && set -- all
+
+# Anchored on "python main.py" so only the player itself matches. The tmux processes
+# carry the whole launch line too, and SIGUSR1 must never go to anything else.
+base='^python main\.py '
+rc=0
+
+for m in "$@"; do
+    case "$m" in
+        all)   pat="$base"; label="all monitors" ;;
+        [0-3]) pat="${base}.*monitor_${m}_keymap\.conf"; label="monitor $m" ;;
+        *)     echo "${0##*/}: unknown monitor '$m' (use 0-3 or all)" >&2; rc=1; continue ;;
+    esac
+
+    if ! pgrep -fa "$pat"; then
+        echo "${0##*/}: no running pyVid2-qt instance for $label" >&2
+        rc=1
+        continue
+    fi
+
+    if (( ! list_only )); then
+        pkill -USR1 -f "$pat" && echo "  -> restart sent to $label"
+    fi
+done
+
+exit $rc
