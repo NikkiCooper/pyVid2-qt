@@ -36,6 +36,9 @@ class VideoWidget(QVideoWidget):
     # Emitted (with the file path) when the current source cannot be played:
     # InvalidMedia status or a QMediaPlayer error.  At most once per load_file().
     load_failed = Signal(str)
+    # Emitted (with the file path) once the current source has loaded and is playing
+    # (first BufferedMedia).  At most once per load_file().
+    load_succeeded = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -161,8 +164,11 @@ class VideoWidget(QVideoWidget):
             # Current source is playing with a valid position: rate changes are safe now.
             # Apply the stored speed (see the note in __init__).
             if self.player.source() == self._url:
+                first = not self._rate_ready
                 self._rate_ready = True
                 self._sync_rate()
+                if first:
+                    self.load_succeeded.emit(self._url.toLocalFile())
         elif status == QMediaPlayer.MediaStatus.InvalidMedia:
             self._report_failure()
         elif status == QMediaPlayer.MediaStatus.EndOfMedia:
