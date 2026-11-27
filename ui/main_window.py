@@ -141,6 +141,16 @@ class MainWindow(QMainWindow):
 
         # Paths that were missing or failed to load — shown red in the playlist viewer
         self._bad_paths = set()
+        # Unplayable-file auto-skip: direction of the last navigation (+1 next, -1 previous),
+        # count of consecutive unplayable entries (reset on a successful load; stops the
+        # skipping once every entry has failed), and the pending single-shot skip timer.
+        self._skip_direction = 1
+        self._fail_streak = 0
+        self._skip_timer = QTimer(self)
+        self._skip_timer.setSingleShot(True)
+        self._skip_timer.timeout.connect(self._skip_unplayable)
+        self._skip_notice = None
+        self._skip_origin_notice = None
         # True while a menu item runs quietly (see osd_muted())
         self._osd_muted = False
 
@@ -434,6 +444,7 @@ class MainWindow(QMainWindow):
         # Auto-advance when video ends (via _on_video_ended for loopDelay support)
         self.video_widget.video_ended.connect(self._on_video_ended)
         self.video_widget.load_failed.connect(self._on_load_failed)
+        self.video_widget.load_succeeded.connect(self._on_load_succeeded)
 
         # Enable mouse tracking on the main window too (covers margins/control panel area)
         self.setMouseTracking(True)
@@ -679,8 +690,26 @@ class MainWindow(QMainWindow):
 
     # ==================== Playlist ====================
 
-    def play_file(self, file_path, notice=None):
-        """Activate a playlist entry.  `notice` (HTML) is shown above the title OSD."""
+    def play_file(self, file_path, notice=None, direction=1, auto_skip=False):
+        """
+        Activate a playlist entry.  `notice` (HTML) is shown above the title OSD.
+        If the entry turns out to be unplayable, playback skips on in `direction`
+        (+1 forward, -1 back).  auto_skip=True continues an unplayable-file streak;
+        any other call starts a fresh one.
+        """
+        # Any explicit navigation supersedes a pending auto-skip.
+        self._skip_timer.stop()
+        self._skip_direction = direction
+        if not auto_skip:
+            self._fail_streak = 0
+
+        # Verify the file still exists / is readable before handing it to the player
+        # (it may have been deleted, renamed or moved since the playlist was built).
+        if not (os.path.isfile(file_path) and os.access(file_path, os.R_OK)):
+            self._playing_path = file_path
+            self._handle_unplayable(file_path, "missing/unreadable", notice)
+            return
+
         self._playing_path = file_path
         self._is_paused = False
         self._hud_position_ms = 0
@@ -755,21 +784,71 @@ class MainWindow(QMainWindow):
         return True
 
     def _on_load_failed(self, path):
-        """The player could not load `path` (broken / unsupported): remember and report it."""
+        """The player could not load `path` (broken / unsupported): report it and move on."""
+        self._handle_unplayable(path, "failed to load")
+
+    def _on_load_succeeded(self, _path):
+        """A video loaded and is playing: end any unplayable-file streak."""
+        self._fail_streak = 0
+
+    def _handle_unplayable(self, path, reason, notice=None):
+        """
+        `path` cannot be played (missing, unreadable or undecodable): mark it bad, report
+        it, and automatically skip to the next entry in the current navigation direction.
+        Gives up (and stops the player) once every playlist entry has failed in a row.
+        """
         self._bad_paths.add(path)
+        self._position_timer.stop()
         name = os.path.basename(path)
-        print(f"{bc.Light_Red_f}Cannot play (failed to load):{bc.White_f} {path}{bc.RESET}")
+        print(f"{bc.Light_Red_f}Cannot play ({reason}):{bc.White_f} {path}{bc.RESET}")
+        self._fail_streak += 1
+        if self._fail_streak == 1:
+            # Keep the caller's notice (e.g. "PlayList: ...") for the whole skip run.
+            self._skip_origin_notice = notice
+            msg = f'Could not load: <span style="color:rgb(255,80,80)">{name}</span>'
+        else:
+            msg = (f'Skipped <span style="color:rgb(255,80,80)">{self._fail_streak}</span> '
+                   f'unplayable videos (last: <span style="color:rgb(255,80,80)">{name}</span>)')
+        if self._skip_origin_notice:
+            msg = f"{self._skip_origin_notice}<br>{msg}"
+
+        if not self.playlist or self._fail_streak >= len(self.playlist):
+            self.video_widget.stop()
+            print(f"{bc.Light_Red_f}No playable videos left in the playlist.{bc.RESET}")
+            if self.menu.viewer_open:
+                self.menu.viewer_refresh(status="No playable videos in the playlist")
+            else:
+                self.show_osd(f'{msg}<br><span style="color:rgb(255,80,80)">'
+                              f'No playable videos in the playlist</span>', duration_ms=5000)
+            return
+
         if self.menu.viewer_open:
             self.menu.viewer_refresh(status=f"Could not load: {name}")
-        else:
-            self.show_osd(f'Could not load: <span style="color:rgb(255,80,80)">{name}</span>',
-                          duration_ms=3000)
+        # Carry the message into the next video's title OSD (play_file would overwrite it).
+        self._skip_notice = msg
+        self._skip_timer.start(250)
 
-    def play_next(self):
+    def _skip_unplayable(self):
+        """Timer slot: step past an unplayable entry in the last navigation direction."""
+        notice, self._skip_notice = self._skip_notice, None
+        self._step(self._skip_direction, notice=notice, auto=True)
+
+    def play_next(self, *_):
+        self._step(1)
+
+    def play_previous(self, *_):
+        self._step(-1)
+
+    def _step(self, direction, notice=None, auto=False):
+        """Move one entry forward (+1) or back (-1) and play it (auto = unplayable-file skip)."""
         if not self.playlist:
             return
-        self._advance_index()
-        self.play_file(self.playlist[self.current_index])
+        if direction < 0:
+            self.current_index = (self.current_index - 1) % len(self.playlist)
+        else:
+            self._advance_index()
+        self.play_file(self.playlist[self.current_index], notice=notice,
+                       direction=direction, auto_skip=auto)
 
     def _advance_index(self):
         """Step current_index forward one entry, reshuffling on wrap when shuffle is active."""
@@ -805,12 +884,6 @@ class MainWindow(QMainWindow):
                 self.playlist[0], self.playlist[j] = self.playlist[j], self.playlist[0]
         which = "Sub-playlist" if self._sub_active else "Playlist"
         print(f"{bc.Light_Magenta_f}{which} reshuffled ({len(self.playlist)} videos).{bc.RESET}")
-
-    def play_previous(self):
-        if not self.playlist:
-            return
-        self.current_index = (self.current_index - 1) % len(self.playlist)
-        self.play_file(self.playlist[self.current_index])
 
     def sort_playlist(self):
         if not self.playlist:
