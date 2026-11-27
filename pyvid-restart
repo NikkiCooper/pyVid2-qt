@@ -12,12 +12,13 @@
 
 usage() {
     cat <<EOF
-Usage: ${0##*/} [-l] all | MONITOR...
+Usage: ${0##*/} [-l] [-v] all | MONITOR...
 
   ${0##*/} 2          restart monitor 2
   ${0##*/} 0 3        restart the far left and far right monitors
   ${0##*/} all        restart all instances
   ${0##*/} -l all     only list the matching instances, don't restart
+  ${0##*/} -v 2       also show the full command line of each instance
   ${0##*/} -h         show this help
 
 Monitors, left to right: 0 = far left ... 3 = far right
@@ -26,10 +27,16 @@ EOF
 }
 
 list_only=0
-case "${1:-}" in
-    -l|--list) list_only=1; shift ;;
-    -h|--help) usage; exit 0 ;;
-esac
+verbose=0
+while [[ "${1:-}" == -* ]]; do
+    case "$1" in
+        -l|--list)    list_only=1 ;;
+        -v|--verbose) verbose=1 ;;
+        -h|--help)    usage; exit 0 ;;
+        *)            echo "${0##*/}: unknown option '$1'" >&2; usage >&2; exit 1 ;;
+    esac
+    shift
+done
 # No monitor given: show help and do nothing. Restarting everything must be asked for with "all".
 if [[ $# -eq 0 ]]; then
     usage
@@ -39,6 +46,8 @@ fi
 # Anchored on "python main.py" so only the player itself matches. The tmux processes
 # carry the whole launch line too, and SIGUSR1 must never go to anything else.
 base='^python main\.py '
+re_mon='monitor_([0-9]+)_keymap'
+re_disp='--display ([^ ]+)'
 rc=0
 
 for m in "$@"; do
@@ -48,15 +57,30 @@ for m in "$@"; do
         *)     echo "${0##*/}: unknown monitor '$m' (use 0-3 or all)" >&2; rc=1; continue ;;
     esac
 
-    if ! pgrep -fa "$pat"; then
+    mapfile -t procs < <(pgrep -fa "$pat")
+    if (( ${#procs[@]} == 0 )); then
         echo "${0##*/}: no running pyVid2-qt instance for $label" >&2
         rc=1
         continue
     fi
 
-    if (( ! list_only )); then
-        pkill -USR1 -f "$pat" && echo "  -> restart sent to $label"
-    fi
+    # One short line per instance, e.g. "monitor 0 (DP-2, pid 806270): restart sent".
+    # Signal the exact pid that was printed rather than re-matching with pkill.
+    for line in "${procs[@]}"; do
+        pid=${line%% *}
+        [[ $line =~ $re_mon ]]  && mon="monitor ${BASH_REMATCH[1]}" || mon="instance"
+        [[ $line =~ $re_disp ]] && disp="${BASH_REMATCH[1]}, "      || disp=""
+        desc="$mon (${disp}pid $pid)"
+        (( verbose )) && echo "${line#* }"
+        if (( list_only )); then
+            echo "$desc: running"
+        elif kill -USR1 "$pid" 2>/dev/null; then
+            echo "$desc: restart sent"
+        else
+            echo "$desc: could not send restart" >&2
+            rc=1
+        fi
+    done
 done
 
 exit $rc
